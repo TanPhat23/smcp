@@ -66,6 +66,15 @@ export const AgentProfileSchema = z.object({
 
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
+export const DetectedAgentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  mcpConfigPath: z.string().nullable(),
+  skillsDirPath: z.string().nullable()
+});
+
+export type DetectedAgent = z.infer<typeof DetectedAgentSchema>;
+
 export const ShareRecordSchema = z.object({
   name: z.string(),
   version: z.string().regex(SEMVER_REGEX),

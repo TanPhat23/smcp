@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   AgentProfileSchema,
   AuthConfigSchema,
+  DetectedAgentSchema,
   ManifestSchema,
   McpServerConfigSchema,
   RequiredEnvSchema,
@@ -56,6 +57,19 @@ describe("Types and Schemas", () => {
     };
     const parsed = AgentProfileSchema.parse(profile);
     expect(parsed.name).toBe("OpenCode");
+  });
+
+  it("validates a detected agent", () => {
+    const detected = {
+      id: "opencode",
+      name: "OpenCode",
+      mcpConfigPath: "/path/to/opencode.json",
+      skillsDirPath: null
+    };
+    const parsed = DetectedAgentSchema.parse(detected);
+    expect(parsed.id).toBe("opencode");
+    expect(parsed.mcpConfigPath).toBe("/path/to/opencode.json");
+    expect(parsed.skillsDirPath).toBeNull();
   });
 
   it("validates share history", () => {
