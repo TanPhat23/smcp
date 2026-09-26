@@ -33,12 +33,15 @@ function ensureSmcpDir(): void {
   }
 }
 
-function atomicWriteFileSync(
+export function atomicWriteFileSync(
   filePath: string,
   content: string,
   options?: { mode?: number }
 ): void {
   const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   const tempFile = path.join(
     dir,
     `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
