@@ -7,9 +7,14 @@
   "bin": {
     "smcp": "./bin/smcp.js"
   },
+  "files": [
+    "bin",
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run src/cli.ts",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js",
     "prepublishOnly": "bun run build"
   },
