@@ -16,6 +16,7 @@ export interface ShareCommandOptions {
   description?: string;
   servers?: string[];
   skills?: string[];
+  agents?: string[];
   isPublic?: boolean;
 }
 
@@ -113,7 +114,11 @@ export function exportPackLocally(
 export async function shareCommand(options?: ShareCommandOptions): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" smcp — Share Skills & MCPs ")));
 
-  const agents = detectAgents();
+  let agents = detectAgents();
+  if (options?.agents && options.agents.length > 0) {
+    const filterSet = new Set(options.agents);
+    agents = agents.filter((a) => filterSet.has(a.id));
+  }
   if (agents.length === 0) {
     p.cancel("No supported AI agents found on this machine.");
     return;
