@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import fs from "node:fs";
 import path from "node:path";
-import { detectAgents, readInstalledMcpServers, scanSkills } from "../core/agents.ts";
+import { detectAgents, getAgentProfiles, readInstalledMcpServers, scanSkills } from "../core/agents.ts";
 import { GitHubClient } from "../core/github.ts";
 import { redactMcpServers } from "../core/redactor.ts";
 import { getAuthConfig, getSharesHistory, recordShare } from "../core/state.ts";
@@ -53,6 +53,10 @@ export function bundleSkillFiles(skills: SkillEntry[]): {
         const full = path.join(skillDir, entry as string);
         if (fs.existsSync(full) && fs.statSync(full).isFile()) {
           const rel = path.relative(skillDir, full).replaceAll("\\", "/");
+          const segments = rel.split("/");
+          if (segments.some((seg) => seg.startsWith("."))) {
+            continue;
+          }
           const content = fs.readFileSync(full, "utf8");
           skillFiles[rel] = content;
           gistFiles[`skills_${sk.name}_${rel.replaceAll("/", "_")}`] = { content };
@@ -116,10 +120,15 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   }
 
   // 1. Collect all available MCP servers
+  const profiles = getAgentProfiles();
   const availableServers: Record<string, McpServerConfig> = {};
   for (const agent of agents) {
     if (agent.mcpConfigPath) {
-      const servers = readInstalledMcpServers(agent.mcpConfigPath);
+      const profile = profiles[agent.id];
+      const servers = readInstalledMcpServers(
+        agent.mcpConfigPath,
+        profile?.mcpConfig?.key || "mcpServers"
+      );
       Object.assign(availableServers, servers);
     }
   }

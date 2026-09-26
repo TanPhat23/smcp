@@ -9,6 +9,7 @@ import {
   extractSkillFiles,
   installCommand,
   installPackIntoAgents,
+  resolveActiveAgentPath,
   resolveMcpServerTemplates
 } from "../src/commands/install.ts";
 import { listCommand } from "../src/commands/list.ts";
@@ -190,6 +191,29 @@ describe("Commands Implementation", () => {
     it("listCommand runs without throwing when no agents are detected", () => {
       expect(() => listCommand()).not.toThrow();
     });
+
+    it("listCommand reads servers using custom mcpConfig.key from agent profile", () => {
+      const customMcp = path.join(testDir, "custom-list-mcp.json");
+      fs.writeFileSync(
+        customMcp,
+        JSON.stringify({
+          customKey: {
+            customKeyServer: { command: "node", args: ["custom.js"] }
+          }
+        }),
+        "utf8"
+      );
+
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("custom-list-agent", {
+        name: "Custom List Agent",
+        mcpConfig: { paths: [customMcp], key: "customKey" },
+        skills: null
+      });
+
+      expect(() => listCommand()).not.toThrow();
+    });
   });
 
   describe("share command helpers & local pack export", () => {
@@ -233,6 +257,53 @@ describe("Commands Implementation", () => {
       expect(gistFiles["skills_test-skill_SKILL.md"]).toBeDefined();
       expect(gistFiles["skills_test-skill_sub_helper.txt"]).toBeDefined();
       expect(gistFiles["skills_single_SKILL.md"]).toBeDefined();
+    });
+
+    it("bundleSkillFiles filters out hidden files and files in hidden directories", () => {
+      const skillDir = path.join(testDir, "hidden-skill");
+      fs.mkdirSync(path.join(skillDir, ".git"), { recursive: true });
+      fs.mkdirSync(path.join(skillDir, ".hidden-dir"), { recursive: true });
+      fs.mkdirSync(path.join(skillDir, "sub"), { recursive: true });
+
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), "# Skill with hidden files", "utf8");
+      fs.writeFileSync(path.join(skillDir, ".DS_Store"), "binary junk", "utf8");
+      fs.writeFileSync(path.join(skillDir, ".gitignore"), "node_modules", "utf8");
+      fs.writeFileSync(path.join(skillDir, ".git", "config"), "git config", "utf8");
+      fs.writeFileSync(path.join(skillDir, ".hidden-dir", "secret.txt"), "secret", "utf8");
+      fs.writeFileSync(path.join(skillDir, "sub", ".hidden-sub"), "hidden sub", "utf8");
+      fs.writeFileSync(path.join(skillDir, "sub", "valid.txt"), "valid content", "utf8");
+
+      const skills: SkillEntry[] = [
+        {
+          name: "hidden-skill",
+          path: path.join(skillDir, "SKILL.md"),
+          description: "Skill with hidden files"
+        }
+      ];
+
+      const { bundledSkills, gistFiles } = bundleSkillFiles(skills);
+      const bundled = bundledSkills[0];
+      expect(bundled).toBeDefined();
+      expect(bundled.files).toBeDefined();
+
+      // Non-hidden files must be present
+      expect(bundled.files?.["SKILL.md"]).toBe("# Skill with hidden files");
+      expect(bundled.files?.["sub/valid.txt"]).toBe("valid content");
+
+      // Hidden files and files in hidden dirs must be omitted
+      expect(bundled.files?.[".DS_Store"]).toBeUndefined();
+      expect(bundled.files?.[".gitignore"]).toBeUndefined();
+      expect(bundled.files?.[".git/config"]).toBeUndefined();
+      expect(bundled.files?.[".hidden-dir/secret.txt"]).toBeUndefined();
+      expect(bundled.files?.["sub/.hidden-sub"]).toBeUndefined();
+
+      // Gist files must not include hidden files
+      for (const gistKey of Object.keys(gistFiles)) {
+        expect(gistKey).not.toContain(".DS_Store");
+        expect(gistKey).not.toContain(".gitignore");
+        expect(gistKey).not.toContain(".git");
+        expect(gistKey).not.toContain(".hidden");
+      }
     });
 
     it("exportPackLocally writes smcp.json and skill files to output directory", () => {
@@ -322,6 +393,41 @@ describe("Commands Implementation", () => {
       expect(rec).toBeDefined();
       expect(rec?.targetType).toBe("local");
       expect(rec?.targetUrl).toBe(path.resolve(outDir));
+    });
+
+    it("shareCommand reads servers using custom mcpConfig.key from agent profile", async () => {
+      const customMcp = path.join(testDir, "custom-key-mcp.json");
+      fs.writeFileSync(
+        customMcp,
+        JSON.stringify({
+          customKey: {
+            customKeyServer: { command: "node", args: ["custom.js"] }
+          }
+        }),
+        "utf8"
+      );
+
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("custom-key-agent", {
+        name: "Custom Key Agent",
+        mcpConfig: { paths: [customMcp], key: "customKey" },
+        skills: null
+      });
+
+      const outDir = path.join(testDir, "custom-key-out");
+      await shareCommand({
+        output: outDir,
+        name: "custom-key-pack",
+        description: "Custom key test description",
+        servers: ["customKeyServer"],
+        skills: []
+      });
+
+      const manifestPath = path.join(outDir, "smcp.json");
+      expect(fs.existsSync(manifestPath)).toBe(true);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      expect(manifest.mcpServers?.customKeyServer).toBeDefined();
     });
   });
 
@@ -533,6 +639,78 @@ describe("Commands Implementation", () => {
       expect(
         fs.readFileSync(path.join(agentSkillsDir, "git-helper", "SKILL.md"), "utf8")
       ).toBe("# Git Helper Skill");
+    });
+
+    it("resolveActiveAgentPath returns existing path or falls back to first path", () => {
+      expect(resolveActiveAgentPath()).toBeNull();
+      expect(resolveActiveAgentPath([])).toBeNull();
+
+      const nonExistent1 = path.join(testDir, "nonexistent1.json");
+      const existing = path.join(testDir, "existing.json");
+      const nonExistent2 = path.join(testDir, "nonexistent2.json");
+
+      fs.writeFileSync(existing, "{}", "utf8");
+
+      // Picks existing path even when not first
+      expect(resolveActiveAgentPath([nonExistent1, existing, nonExistent2])).toBe(existing);
+
+      // Falls back to first path when none exist
+      expect(resolveActiveAgentPath([nonExistent1, nonExistent2])).toBe(nonExistent1);
+    });
+
+    it("installPackIntoAgents resolves the active existing path when multiple paths are configured", () => {
+      const nonexistentMcp = path.join(testDir, "missing-mcp.json");
+      const activeMcp = path.join(testDir, "active-mcp.json");
+      const nonexistentSkills = path.join(testDir, "missing-skills");
+      const activeSkills = path.join(testDir, "active-skills");
+
+      fs.writeFileSync(activeMcp, JSON.stringify({ mcpServers: {} }), "utf8");
+      fs.mkdirSync(activeSkills, { recursive: true });
+
+      const customProfiles: Record<string, AgentProfile> = {
+        "multi-path-agent": {
+          name: "Multi Path Agent",
+          mcpConfig: { paths: [nonexistentMcp, activeMcp], key: "mcpServers" },
+          skills: { paths: [nonexistentSkills, activeSkills] }
+        }
+      };
+
+      const manifest: Manifest = {
+        name: "test-pack",
+        version: "1.0.0",
+        mcpServers: {
+          testServer: { command: "node", args: ["server.js"] }
+        },
+        skills: [
+          {
+            name: "test-skill",
+            path: "skills/test-skill/SKILL.md",
+            files: { "SKILL.md": "# Test" }
+          }
+        ],
+        requiredEnv: []
+      };
+
+      const result = installPackIntoAgents(
+        manifest,
+        ["multi-path-agent"],
+        { testServer: { command: "node", args: ["server.js"] } },
+        undefined,
+        undefined,
+        customProfiles
+      );
+
+      expect(result.installedMcp).toContain("multi-path-agent");
+      expect(result.installedSkills).toContain("multi-path-agent");
+
+      // First paths should not have been created/written to
+      expect(fs.existsSync(nonexistentMcp)).toBe(false);
+      expect(fs.existsSync(path.join(nonexistentSkills, "test-skill"))).toBe(false);
+
+      // Active paths should contain the installed configs
+      const mcpContent = JSON.parse(fs.readFileSync(activeMcp, "utf8"));
+      expect(mcpContent.mcpServers.testServer).toBeDefined();
+      expect(fs.existsSync(path.join(activeSkills, "test-skill", "SKILL.md"))).toBe(true);
     });
 
     it("installCommand installs from local pack directory with options", async () => {
@@ -775,6 +953,59 @@ describe("Commands Implementation", () => {
         expect(mcp.mcpServers.duplicateServer.args).toEqual(["new-version.js"]);
       } finally {
         confirmSpy.mockRestore();
+      }
+    });
+
+    it("installCommand conflict check inspects the active existing config path when multiple paths exist", async () => {
+      const packDir = path.join(testDir, "conflict-multipath-pack");
+      fs.mkdirSync(packDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(packDir, "smcp.json"),
+        JSON.stringify({
+          name: "conflict-multipath-pack",
+          version: "1.0.0",
+          mcpServers: {
+            sharedServer: { command: "node", args: ["new.js"] }
+          }
+        }),
+        "utf8"
+      );
+
+      const nonexistentMcp = path.join(testDir, "missing-before-mcp.json");
+      const activeMcp = path.join(testDir, "active-conflict-mcp.json");
+      fs.writeFileSync(
+        activeMcp,
+        JSON.stringify({
+          mcpServers: {
+            sharedServer: { command: "node", args: ["old.js"] }
+          }
+        }),
+        "utf8"
+      );
+
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("multipath-conflict-agent", {
+        name: "Multipath Conflict Agent",
+        mcpConfig: { paths: [nonexistentMcp, activeMcp], key: "mcpServers" },
+        skills: null
+      });
+
+      let promptShown = false;
+      const confirmSpy = spyOn(p, "confirm").mockImplementation((async () => {
+        promptShown = true;
+        return false; // abort
+      }) as any);
+      const cancelSpy = spyOn(p, "cancel").mockImplementation((() => {}) as any);
+
+      try {
+        await installCommand(packDir, {
+          agents: ["multipath-conflict-agent"]
+        });
+        expect(promptShown).toBe(true);
+      } finally {
+        confirmSpy.mockRestore();
+        cancelSpy.mockRestore();
       }
     });
   });

@@ -23,6 +23,25 @@ export interface InstallCommandOptions {
   force?: boolean;
 }
 
+export function resolveActiveAgentPath(paths?: string[]): string | null {
+  if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    return null;
+  }
+  for (const p of paths) {
+    try {
+      const expanded = expandHome(p);
+      if (fs.existsSync(expanded)) {
+        return expanded;
+      }
+    } catch {
+      // Ignore filesystem access errors
+    }
+  }
+  return expandHome(paths[0]);
+}
+
+export const resolveActivePath = resolveActiveAgentPath;
+
 export function resolveMcpServerTemplates(
   servers: Record<string, McpServerConfig>,
   envValues: Record<string, string>
@@ -141,21 +160,35 @@ export function installPackIntoAgents(
     if (!profile) continue;
 
     // Install MCP servers
-    if (profile.mcpConfig && Object.keys(resolvedServers).length > 0) {
-      const primaryPath = expandHome(profile.mcpConfig.paths[0]);
-      mergeMcpServersIntoFile(primaryPath, resolvedServers, profile.mcpConfig.key || "mcpServers");
-      installedMcp.push(agentId);
+    if (
+      profile.mcpConfig &&
+      profile.mcpConfig.paths &&
+      profile.mcpConfig.paths.length > 0 &&
+      Object.keys(resolvedServers).length > 0
+    ) {
+      const primaryPath = resolveActiveAgentPath(profile.mcpConfig.paths);
+      if (primaryPath) {
+        mergeMcpServersIntoFile(primaryPath, resolvedServers, profile.mcpConfig.key || "mcpServers");
+        installedMcp.push(agentId);
+      }
     }
 
     // Install Skills
-    if (profile.skills && manifest.skills && manifest.skills.length > 0) {
-      const primarySkillsDir = expandHome(profile.skills.paths[0]);
-
-      for (const skill of manifest.skills) {
-        const filesToInstall = extractSkillFiles(skill, rawFiles, localDir);
-        installSkillFiles(primarySkillsDir, skill.name, filesToInstall);
+    if (
+      profile.skills &&
+      profile.skills.paths &&
+      profile.skills.paths.length > 0 &&
+      manifest.skills &&
+      manifest.skills.length > 0
+    ) {
+      const primarySkillsDir = resolveActiveAgentPath(profile.skills.paths);
+      if (primarySkillsDir) {
+        for (const skill of manifest.skills) {
+          const filesToInstall = extractSkillFiles(skill, rawFiles, localDir);
+          installSkillFiles(primarySkillsDir, skill.name, filesToInstall);
+        }
+        installedSkills.push(agentId);
       }
-      installedSkills.push(agentId);
     }
   }
 
@@ -330,24 +363,28 @@ export async function installCommand(source: string, options?: InstallCommandOpt
       const profile = allProfiles[agentId];
       if (!profile) continue;
 
-      if (profile.mcpConfig && profile.mcpConfig.paths.length > 0) {
-        const pPath = expandHome(profile.mcpConfig.paths[0]);
-        const currentServers = readInstalledMcpServers(pPath, profile.mcpConfig.key || "mcpServers");
-        for (const sName of Object.keys(resolvedServers)) {
-          if (currentServers[sName]) {
-            hasConflicts = true;
-            break;
+      if (profile.mcpConfig && profile.mcpConfig.paths && profile.mcpConfig.paths.length > 0) {
+        const pPath = resolveActiveAgentPath(profile.mcpConfig.paths);
+        if (pPath) {
+          const currentServers = readInstalledMcpServers(pPath, profile.mcpConfig.key || "mcpServers");
+          for (const sName of Object.keys(resolvedServers)) {
+            if (currentServers[sName]) {
+              hasConflicts = true;
+              break;
+            }
           }
         }
       }
       if (hasConflicts) break;
 
-      if (profile.skills && profile.skills.paths.length > 0 && manifest.skills) {
-        const sPath = expandHome(profile.skills.paths[0]);
-        for (const sk of manifest.skills) {
-          if (fs.existsSync(path.join(sPath, sk.name))) {
-            hasConflicts = true;
-            break;
+      if (profile.skills && profile.skills.paths && profile.skills.paths.length > 0 && manifest.skills) {
+        const sPath = resolveActiveAgentPath(profile.skills.paths);
+        if (sPath) {
+          for (const sk of manifest.skills) {
+            if (fs.existsSync(path.join(sPath, sk.name))) {
+              hasConflicts = true;
+              break;
+            }
           }
         }
       }

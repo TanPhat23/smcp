@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { detectAgents, readInstalledMcpServers, scanSkills } from "../core/agents.ts";
+import { detectAgents, getAgentProfiles, readInstalledMcpServers, scanSkills } from "../core/agents.ts";
 
 export function listCommand(): void {
   p.intro(pc.bgCyan(pc.black(" smcp — Installed Skills & MCPs ")));
@@ -12,11 +12,17 @@ export function listCommand(): void {
     return;
   }
 
+  const profiles = getAgentProfiles();
+
   for (const agent of agents) {
     console.log(`\n${pc.bold(pc.magenta("● " + agent.name))}`);
 
     if (agent.mcpConfigPath) {
-      const servers = readInstalledMcpServers(agent.mcpConfigPath);
+      const profile = profiles[agent.id];
+      const servers = readInstalledMcpServers(
+        agent.mcpConfigPath,
+        profile?.mcpConfig?.key || "mcpServers"
+      );
       const serverNames = Object.keys(servers);
       console.log(`  ${pc.cyan("MCP Servers")} (${pc.dim(agent.mcpConfigPath)}):`);
       if (serverNames.length === 0) {
