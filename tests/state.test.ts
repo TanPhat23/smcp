@@ -6,6 +6,7 @@ import {
   clearAuthConfig,
   getAuthConfig,
   getSharesHistory,
+  getSmcpDir,
   recordShare,
   saveAuthConfig
 } from "../src/core/state.ts";
@@ -43,6 +44,19 @@ describe("State Management (Local Config & History)", () => {
     }
   });
 
+  describe("getSmcpDir", () => {
+    it("returns default path in home directory when SMCP_DIR is unset", () => {
+      delete process.env.SMCP_DIR;
+      expect(getSmcpDir()).toBe(path.join(os.homedir(), ".smcp"));
+    });
+
+    it("expands home directory tilde in SMCP_DIR using expandHome", () => {
+      process.env.SMCP_DIR = "~/custom-smcp-dir";
+      const expected = path.resolve(os.homedir(), "custom-smcp-dir");
+      expect(getSmcpDir()).toBe(expected);
+    });
+  });
+
   describe("getAuthConfig", () => {
     it("returns empty object when no config file exists and no env var is set", () => {
       const config = getAuthConfig();
@@ -54,6 +68,19 @@ describe("State Management (Local Config & History)", () => {
 
       const config = getAuthConfig();
       expect(config.githubToken).toBe("ghp_envToken123456789");
+    });
+
+    it("ignores whitespace-only GITHUB_TOKEN environment variable", () => {
+      saveAuthConfig({
+        githubToken: "ghp_savedToken111",
+        githubUser: "saved-user"
+      });
+
+      process.env.GITHUB_TOKEN = "   \t  \n  ";
+
+      const config = getAuthConfig();
+      expect(config.githubToken).toBe("ghp_savedToken111");
+      expect(config.githubUser).toBe("saved-user");
     });
 
     it("prefers GITHUB_TOKEN environment variable over saved config", () => {
@@ -114,8 +141,10 @@ describe("State Management (Local Config & History)", () => {
       expect(fs.existsSync(configFile)).toBe(true);
 
       const stat = fs.statSync(configFile);
-      const permissions = stat.mode & 0o777;
-      expect(permissions).toBe(0o600);
+      if (process.platform !== "win32") {
+        const permissions = stat.mode & 0o777;
+        expect(permissions).toBe(0o600);
+      }
 
       const content = JSON.parse(fs.readFileSync(configFile, "utf8"));
       expect(content.githubToken).toBe("ghp_secureToken123");
@@ -131,7 +160,20 @@ describe("State Management (Local Config & History)", () => {
       saveAuthConfig({ githubToken: "ghp_fixedModeToken" });
 
       const stat = fs.statSync(configFile);
-      expect(stat.mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect(stat.mode & 0o777).toBe(0o600);
+      }
+    });
+
+    it("writes config atomically without leaving temporary files", () => {
+      saveAuthConfig({
+        githubToken: "ghp_atomic123"
+      });
+
+      const files = fs.readdirSync(testDir);
+      expect(files).toContain("config.json");
+      const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
+      expect(tmpFiles.length).toBe(0);
     });
 
     it("validates config against AuthConfigSchema and rejects invalid types", () => {
@@ -158,6 +200,22 @@ describe("State Management (Local Config & History)", () => {
 
     it("does not throw if config.json does not exist", () => {
       expect(() => clearAuthConfig()).not.toThrow();
+    });
+
+    it("rethrows non-ENOENT errors when clearing auth config", () => {
+      saveAuthConfig({ githubToken: "ghp_to_be_deleted", githubUser: "bye" });
+      const originalUnlinkSync = fs.unlinkSync;
+      try {
+        fs.unlinkSync = () => {
+          const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+          err.code = "EACCES";
+          throw err;
+        };
+
+        expect(() => clearAuthConfig()).toThrow(/EACCES/);
+      } finally {
+        fs.unlinkSync = originalUnlinkSync;
+      }
     });
   });
 
@@ -189,6 +247,28 @@ describe("State Management (Local Config & History)", () => {
 
       const sharesFile = path.join(testDir, "shares.json");
       expect(fs.existsSync(sharesFile)).toBe(true);
+    });
+
+    it("writes shares atomically without leaving temporary files", () => {
+      const sampleShare: ShareRecord = {
+        name: "test-atomic-share",
+        version: "1.0.0",
+        targetType: "gist",
+        targetUrl: "https://gist.github.com/octocat/123456",
+        gistId: "123456",
+        lastSharedAt: "2026-09-26T12:00:00.000Z",
+        fingerprints: {
+          mcpServers: {},
+          skills: {}
+        }
+      };
+
+      recordShare(sampleShare);
+
+      const files = fs.readdirSync(testDir);
+      expect(files).toContain("shares.json");
+      const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
+      expect(tmpFiles.length).toBe(0);
     });
 
     it("updates an existing share by name rather than duplicating it", () => {

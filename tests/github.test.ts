@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { GitHubClient } from "../src/core/github.ts";
+import { formatApiError, GitHubClient, parseGistId } from "../src/core/github.ts";
 
 describe("GitHubClient", () => {
   const originalFetch = globalThis.fetch;
@@ -11,6 +11,21 @@ describe("GitHubClient", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  describe("Token privacy (#token)", () => {
+    it("does not expose #token in Object.keys() or JSON.stringify()", () => {
+      const secret = "ghp_superSecretToken123456789";
+      const client = new GitHubClient(secret);
+
+      const keys = Object.keys(client);
+      expect(keys).not.toContain("token");
+      expect(keys).not.toContain("#token");
+
+      const json = JSON.stringify(client);
+      expect(json).not.toContain(secret);
+      expect(json).not.toContain("token");
+    });
   });
 
   describe("verifyUser()", () => {
@@ -25,13 +40,14 @@ describe("GitHubClient", () => {
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_testToken123");
       const user = await client.verifyUser();
 
       expect(lastRequest).toBeDefined();
       expect(lastRequest?.url).toBe("https://api.github.com/user");
+      expect(lastRequest?.init?.signal).toBeDefined();
 
       const headers = (lastRequest?.init?.headers || {}) as Record<string, string>;
       expect(headers["Authorization"]).toBe("Bearer ghp_testToken123");
@@ -52,7 +68,7 @@ describe("GitHubClient", () => {
           }),
           { status: 401, statusText: "Unauthorized" }
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_invalidToken");
       await expect(client.verifyUser()).rejects.toThrow(/401|Unauthorized|Bad credentials/i);
@@ -61,7 +77,7 @@ describe("GitHubClient", () => {
     it("handles unexpected server error with descriptive error", async () => {
       globalThis.fetch = (async () => {
         return new Response("Internal Server Error", { status: 500, statusText: "Internal Server Error" });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_validToken");
       await expect(client.verifyUser()).rejects.toThrow(/500/);
@@ -79,7 +95,7 @@ describe("GitHubClient", () => {
           }),
           { status: 201, headers: { "Content-Type": "application/json" } }
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_testToken123");
       const payload = {
@@ -95,6 +111,7 @@ describe("GitHubClient", () => {
 
       expect(lastRequest?.url).toBe("https://api.github.com/gists");
       expect(lastRequest?.init?.method).toBe("POST");
+      expect(lastRequest?.init?.signal).toBeDefined();
 
       const headers = (lastRequest?.init?.headers || {}) as Record<string, string>;
       expect(headers["Authorization"]).toBe("Bearer ghp_testToken123");
@@ -117,7 +134,7 @@ describe("GitHubClient", () => {
           }),
           { status: 422, statusText: "Unprocessable Entity" }
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_testToken123");
       await expect(
@@ -141,7 +158,7 @@ describe("GitHubClient", () => {
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_testToken123");
       const updatePayload = {
@@ -155,6 +172,7 @@ describe("GitHubClient", () => {
 
       expect(lastRequest?.url).toBe("https://api.github.com/gists/gist_existing123");
       expect(lastRequest?.init?.method).toBe("PATCH");
+      expect(lastRequest?.init?.signal).toBeDefined();
 
       const headers = (lastRequest?.init?.headers || {}) as Record<string, string>;
       expect(headers["Authorization"]).toBe("Bearer ghp_testToken123");
@@ -172,12 +190,65 @@ describe("GitHubClient", () => {
           status: 404,
           statusText: "Not Found"
         });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new GitHubClient("ghp_testToken123");
       await expect(
         client.updateGist("nonexistent_id", { description: "Update" })
       ).rejects.toThrow(/404/);
+    });
+  });
+
+  describe("formatApiError", () => {
+    it("formats JSON error response with message and errors array", async () => {
+      const jsonRes = new Response(
+        JSON.stringify({
+          message: "Validation Failed",
+          errors: [{ resource: "Gist", field: "files", code: "missing" }]
+        }),
+        { status: 422, statusText: "Unprocessable Entity" }
+      );
+
+      const formatted = await formatApiError(jsonRes, "Failed to create Gist");
+      expect(formatted).toContain("Failed to create Gist");
+      expect(formatted).toContain("422");
+      expect(formatted).toContain("Validation Failed");
+      expect(formatted).toContain("files (missing)");
+    });
+
+    it("formats 401 Auth failed error cleanly", async () => {
+      const authRes = new Response(
+        JSON.stringify({ message: "Bad credentials" }),
+        { status: 401, statusText: "Unauthorized" }
+      );
+
+      const formatted = await formatApiError(authRes, "GitHub Authentication failed");
+      expect(formatted).toContain("401");
+      expect(formatted).toContain("Auth failed");
+      expect(formatted).toContain("Bad credentials");
+    });
+
+    it("formats 403 Auth failed error cleanly", async () => {
+      const forbiddenRes = new Response(
+        JSON.stringify({ message: "Resource not accessible by personal access token" }),
+        { status: 403, statusText: "Forbidden" }
+      );
+
+      const formatted = await formatApiError(forbiddenRes, "GitHub Authentication failed");
+      expect(formatted).toContain("403");
+      expect(formatted).toContain("Auth failed");
+      expect(formatted).toContain("Resource not accessible");
+    });
+
+    it("formats 5xx server error with GitHub service unavailable and truncates large HTML", async () => {
+      const largeHtml = "<html><body><h1>503 Service Unavailable</h1>" + "<p>Internal incident description</p>".repeat(40) + "</body></html>";
+      const serverRes = new Response(largeHtml, { status: 503, statusText: "Service Unavailable" });
+
+      const formatted = await formatApiError(serverRes, "Failed to fetch Gist");
+      expect(formatted).toContain("503");
+      expect(formatted).toContain("GitHub service unavailable");
+      expect(formatted.length).toBeLessThan(350);
+      expect(formatted).toContain("...");
     });
   });
 
@@ -201,11 +272,12 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const result = await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345");
 
       expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
+      expect(lastRequest?.init?.signal).toBeDefined();
       expect(result.files["smcp.json"].content).toBe('{"name":"pack","version":"1.0.0"}');
       expect(result.files["SKILL.md"].content).toBe("# Skill content");
     });
@@ -214,9 +286,49 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345/");
+      expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
+    });
+
+    it("extracts Gist ID from URL with #file-readme-md hash fragment", async () => {
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        lastRequest = { url: input.toString(), init };
+        return new Response(JSON.stringify(mockGistResponse), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345#file-readme-md");
+      expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
+    });
+
+    it("extracts Gist ID from URL with ?raw=true search query", async () => {
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        lastRequest = { url: input.toString(), init };
+        return new Response(JSON.stringify(mockGistResponse), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345?raw=true");
+      expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
+    });
+
+    it("extracts Gist ID from URL with .git suffix", async () => {
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        lastRequest = { url: input.toString(), init };
+        return new Response(JSON.stringify(mockGistResponse), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345.git");
+      expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
+    });
+
+    it("extracts Gist ID from URL with .git suffix, search query, and hash fragment combined", async () => {
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        lastRequest = { url: input.toString(), init };
+        return new Response(JSON.stringify(mockGistResponse), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      await GitHubClient.fetchGist("https://gist.github.com/octocat/abc12345.git?raw=true#file-smcp-json");
       expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
     });
 
@@ -224,7 +336,7 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       await GitHubClient.fetchGist("abc12345");
       expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
@@ -234,7 +346,7 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       await GitHubClient.fetchGist("https://gist.github.com/abc12345");
       expect(lastRequest?.url).toBe("https://api.github.com/gists/abc12345");
@@ -244,7 +356,7 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       await GitHubClient.fetchGist("abc12345");
 
@@ -257,7 +369,7 @@ describe("GitHubClient", () => {
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         lastRequest = { url: input.toString(), init };
         return new Response(JSON.stringify(mockGistResponse), { status: 200 });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       await GitHubClient.fetchGist("abc12345", "ghp_authToken999");
 
@@ -271,14 +383,33 @@ describe("GitHubClient", () => {
           status: 404,
           statusText: "Not Found"
         });
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
-      await expect(GitHubClient.fetchGist("missing_gist")).rejects.toThrow(/404/);
+      await expect(GitHubClient.fetchGist("abcdef1234567890")).rejects.toThrow(/404/);
     });
 
     it("throws an error if gist ID cannot be parsed or is empty", async () => {
       await expect(GitHubClient.fetchGist("")).rejects.toThrow(/invalid gist id/i);
       await expect(GitHubClient.fetchGist("   ")).rejects.toThrow(/invalid gist id/i);
+    });
+
+    it("rejects non-hex / non-alphanumeric Gist IDs", async () => {
+      await expect(GitHubClient.fetchGist("invalid_gist_id!")).rejects.toThrow(/invalid gist id/i);
+      await expect(GitHubClient.fetchGist("not-hex-id")).rejects.toThrow(/invalid gist id/i);
+      await expect(GitHubClient.fetchGist("https://gist.github.com/octocat/not-hex-gist")).rejects.toThrow(/invalid gist id/i);
+    });
+  });
+
+  describe("parseGistId helper", () => {
+    it("parses valid hex IDs directly", () => {
+      expect(parseGistId("abc123def456")).toBe("abc123def456");
+      expect(parseGistId("123456")).toBe("123456");
+    });
+
+    it("parses full URL with scheme", () => {
+      expect(parseGistId("https://gist.github.com/user/6a1b2c3d4e")).toBe("6a1b2c3d4e");
+      expect(parseGistId("https://gist.github.com/user/6a1b2c3d4e.git")).toBe("6a1b2c3d4e");
+      expect(parseGistId("https://gist.github.com/user/6a1b2c3d4e?raw=true#file-test")).toBe("6a1b2c3d4e");
     });
   });
 });
