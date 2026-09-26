@@ -11,7 +11,7 @@ import {
   scanSkills,
   type DetectedAgent
 } from "../src/core/agents.ts";
-import { AgentProfileSchema } from "../src/types.ts";
+import { AgentProfileSchema, type AgentProfile } from "../src/types.ts";
 import { hashContent } from "../src/utils/crypto.ts";
 
 describe("Agent Profiles Registry & Default Agents", () => {
@@ -82,6 +82,27 @@ describe("Agent Profiles Registry & Default Agents", () => {
     const profiles = getAgentProfiles();
     profiles.opencode.name = "Mutated OpenCode";
     expect(DEFAULT_AGENTS.opencode.name).toBe("OpenCode");
+  });
+
+  it("deep freezes DEFAULT_AGENTS and its nested objects", () => {
+    expect(Object.isFrozen(DEFAULT_AGENTS)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_AGENTS.opencode)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_AGENTS.opencode.mcpConfig)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_AGENTS.opencode.mcpConfig?.paths)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_AGENTS.opencode.skills)).toBe(true);
+    expect(Object.isFrozen(DEFAULT_AGENTS.opencode.skills?.paths)).toBe(true);
+
+    expect(() => {
+      (DEFAULT_AGENTS as Record<string, unknown>).newAgent = { name: "Hacker" };
+    }).toThrow();
+
+    expect(() => {
+      (DEFAULT_AGENTS.opencode as { name: string }).name = "Hacked OpenCode";
+    }).toThrow();
+
+    expect(() => {
+      (DEFAULT_AGENTS.opencode.mcpConfig?.paths as string[]).push("/tmp/hack.json");
+    }).toThrow();
   });
 });
 
@@ -182,6 +203,56 @@ describe("Custom Agent Management", () => {
         skills: null
       });
     }).toThrow();
+  });
+
+  it("recovers and filters out invalid profiles when custom-agents.json contains null or invalid schema", () => {
+    fs.mkdirSync(testDir, { recursive: true });
+    const content = {
+      badAgentNull: null,
+      badAgentString: "not-an-object",
+      badAgentNoName: { mcpConfig: null, skills: null },
+      badAgentWrongTypes: { name: 12345, mcpConfig: "invalid" },
+      goodAgent: {
+        name: "Good Custom Agent",
+        mcpConfig: { paths: ["/path/good.json"], key: "mcpServers" },
+        skills: null
+      }
+    };
+    fs.writeFileSync(customAgentsFile, JSON.stringify(content), "utf8");
+
+    const profiles = getAgentProfiles();
+    expect(profiles.goodAgent).toBeDefined();
+    expect(profiles.goodAgent.name).toBe("Good Custom Agent");
+    expect(profiles.badAgentNull).toBeUndefined();
+    expect(profiles.badAgentString).toBeUndefined();
+    expect(profiles.badAgentNoName).toBeUndefined();
+    expect(profiles.badAgentWrongTypes).toBeUndefined();
+    expect(profiles.opencode).toBeDefined();
+  });
+
+  it("validates agent id and profile schema when saving custom agent", () => {
+    const validProfile = {
+      name: "Valid Agent",
+      mcpConfig: null,
+      skills: null
+    };
+
+    expect(() => saveCustomAgent("", validProfile)).toThrow();
+    expect(() => saveCustomAgent("   ", validProfile)).toThrow();
+    expect(() => saveCustomAgent("bad id with spaces", validProfile)).toThrow();
+    expect(() => saveCustomAgent("bad@agent!", validProfile)).toThrow();
+    expect(() => saveCustomAgent("__proto__", validProfile)).toThrow();
+    expect(() => saveCustomAgent("constructor", validProfile)).toThrow();
+    expect(() => saveCustomAgent("prototype", validProfile)).toThrow();
+
+    expect(() => saveCustomAgent("valid-id", null as unknown as AgentProfile)).toThrow();
+    expect(() => saveCustomAgent("valid-id", { name: 123 } as unknown as AgentProfile)).toThrow();
+    expect(() =>
+      saveCustomAgent("valid-id", {
+        name: "Test",
+        mcpConfig: { paths: "not-an-array" }
+      } as unknown as AgentProfile)
+    ).toThrow();
   });
 });
 
@@ -290,6 +361,40 @@ describe("detectAgents()", () => {
     const detected = detectAgents(mockProfiles);
     expect(detected[0].mcpConfigPath).toBe(pathFirst);
   });
+
+  it("rejects directories as mcp config files and regular files as skills directories", () => {
+    const fakeMcpDir = path.join(testDir, "fake-mcp-dir");
+    fs.mkdirSync(fakeMcpDir, { recursive: true });
+
+    const fakeSkillsFile = path.join(testDir, "fake-skills-file.txt");
+    fs.writeFileSync(fakeSkillsFile, "not a directory", "utf8");
+
+    const mockProfiles = {
+      invalidTypesAgent: {
+        name: "Invalid Types Agent",
+        mcpConfig: { paths: [fakeMcpDir], key: "mcpServers" },
+        skills: { paths: [fakeSkillsFile] }
+      }
+    };
+
+    const detected = detectAgents(mockProfiles);
+    expect(detected).toEqual([]);
+  });
+
+  it("handles null or non-object profiles gracefully without throwing", () => {
+    const mockProfiles = {
+      nullProfile: null as unknown as AgentProfile,
+      stringProfile: "string" as unknown as AgentProfile,
+      validAgent: {
+        name: "Valid Agent",
+        mcpConfig: null,
+        skills: null
+      }
+    };
+
+    const detected = detectAgents(mockProfiles);
+    expect(detected).toEqual([]);
+  });
 });
 
 describe("readInstalledMcpServers()", () => {
@@ -378,6 +483,37 @@ describe("readInstalledMcpServers()", () => {
 
     const servers = readInstalledMcpServers(subDir);
     expect(servers).toEqual({});
+  });
+
+  it("rejects prototype pollution keys __proto__, constructor, and prototype", () => {
+    const configPath = path.join(testDir, "pollution-keys.json");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        mcpServers: {
+          validServer: { command: "node", args: ["server.js"] },
+          __proto__: { command: "evil" },
+          constructor: { command: "evil" },
+          prototype: { command: "evil" }
+        },
+        __proto__: { evil: true },
+        constructor: { evil: true },
+        prototype: { evil: true }
+      }),
+      "utf8"
+    );
+
+    expect(readInstalledMcpServers(configPath, "__proto__")).toEqual({});
+    expect(readInstalledMcpServers(configPath, "constructor")).toEqual({});
+    expect(readInstalledMcpServers(configPath, "prototype")).toEqual({});
+
+    const servers = readInstalledMcpServers(configPath, "mcpServers");
+    expect(servers.validServer).toBeDefined();
+    expect(servers.validServer.command).toBe("node");
+    expect(Object.hasOwn(servers, "__proto__")).toBe(false);
+    expect(Object.hasOwn(servers, "constructor")).toBe(false);
+    expect(Object.hasOwn(servers, "prototype")).toBe(false);
+    expect(Object.keys(servers)).toEqual(["validServer"]);
   });
 });
 
@@ -480,5 +616,94 @@ describe("scanSkills()", () => {
 
     const skills = scanSkills(testDir);
     expect(skills.map((s) => s.name)).toEqual(["alpha", "middle", "zebra"]);
+  });
+
+  it("follows symlinked directories and symlinked markdown files", () => {
+    const externalDir = path.join(os.tmpdir(), "smcp-external-skills-" + Date.now());
+    fs.mkdirSync(externalDir, { recursive: true });
+
+    try {
+      const extSkillDir = path.join(externalDir, "ext-skill");
+      fs.mkdirSync(extSkillDir, { recursive: true });
+      fs.writeFileSync(path.join(extSkillDir, "SKILL.md"), "# External Symlinked Skill", "utf8");
+
+      const extMdFile = path.join(externalDir, "standalone-ext.md");
+      fs.writeFileSync(extMdFile, "# Standalone Ext", "utf8");
+
+      fs.symlinkSync(extSkillDir, path.join(testDir, "symlinked-dir"));
+      fs.symlinkSync(extMdFile, path.join(testDir, "symlinked-file.md"));
+      fs.symlinkSync(path.join(externalDir, "does-not-exist"), path.join(testDir, "broken-link"));
+
+      const skills = scanSkills(testDir);
+      const names = skills.map((s) => s.name);
+      expect(names).toContain("symlinked-dir");
+      expect(names).toContain("symlinked-file");
+      expect(names).not.toContain("broken-link");
+
+      const dirSkill = skills.find((s) => s.name === "symlinked-dir");
+      expect(dirSkill?.path).toBe(path.join(testDir, "symlinked-dir", "SKILL.md"));
+      expect(dirSkill?.description).toBe("Skill in symlinked-dir");
+
+      const fileSkill = skills.find((s) => s.name === "symlinked-file");
+      expect(fileSkill?.path).toBe(path.join(testDir, "symlinked-file.md"));
+    } finally {
+      fs.rmSync(externalDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips directories without any SKILL.md or README.md", () => {
+    fs.mkdirSync(path.join(testDir, "empty-folder"), { recursive: true });
+
+    const randomDir = path.join(testDir, "random-folder");
+    fs.mkdirSync(randomDir, { recursive: true });
+    fs.writeFileSync(path.join(randomDir, "other.txt"), "hello", "utf8");
+    fs.writeFileSync(path.join(randomDir, "script.js"), "console.log('hi')", "utf8");
+
+    const validDir = path.join(testDir, "valid-skill");
+    fs.mkdirSync(validDir, { recursive: true });
+    fs.writeFileSync(path.join(validDir, "SKILL.md"), "# Valid Skill", "utf8");
+
+    const skills = scanSkills(testDir);
+    expect(skills.length).toBe(1);
+    expect(skills[0].name).toBe("valid-skill");
+  });
+
+  it("supports case variations: SKILL.md, skill.md, README.md, and readme.md", () => {
+    const dir1 = path.join(testDir, "lowercase-skill");
+    fs.mkdirSync(dir1, { recursive: true });
+    fs.writeFileSync(path.join(dir1, "skill.md"), "# Lower Skill", "utf8");
+
+    const dir2 = path.join(testDir, "lowercase-readme");
+    fs.mkdirSync(dir2, { recursive: true });
+    fs.writeFileSync(path.join(dir2, "readme.md"), "# Lower Readme", "utf8");
+
+    const dir3 = path.join(testDir, "uppercase-skill");
+    fs.mkdirSync(dir3, { recursive: true });
+    fs.writeFileSync(path.join(dir3, "SKILL.md"), "# Upper Skill", "utf8");
+
+    const dir4 = path.join(testDir, "uppercase-readme");
+    fs.mkdirSync(dir4, { recursive: true });
+    fs.writeFileSync(path.join(dir4, "README.md"), "# Upper Readme", "utf8");
+
+    const skills = scanSkills(testDir);
+    const names = skills.map((s) => s.name);
+    expect(names).toEqual([
+      "lowercase-readme",
+      "lowercase-skill",
+      "uppercase-readme",
+      "uppercase-skill"
+    ]);
+
+    const s1 = skills.find((s) => s.name === "lowercase-skill");
+    expect(s1?.path).toBe(path.join(dir1, "skill.md"));
+
+    const s2 = skills.find((s) => s.name === "lowercase-readme");
+    expect(s2?.path).toBe(path.join(dir2, "readme.md"));
+
+    const s3 = skills.find((s) => s.name === "uppercase-skill");
+    expect(s3?.path).toBe(path.join(dir3, "SKILL.md"));
+
+    const s4 = skills.find((s) => s.name === "uppercase-readme");
+    expect(s4?.path).toBe(path.join(dir4, "README.md"));
   });
 });
