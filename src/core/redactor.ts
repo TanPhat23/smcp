@@ -18,14 +18,14 @@ const SECRET_VALUE_PATTERNS = [
   /^ey[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/ // JWT token
 ];
 
-const CONNECTION_STRING_PATTERN = /^[a-zA-Z0-9+]+:\/\/[^:]+:[^@]+@.+/;
+const CONNECTION_STRING_PATTERN = /^[a-zA-Z0-9+]+:\/\/[^:]*:[^@]+@.+/;
 
 export function isSecretKey(key: string): boolean {
   return SECRET_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
 export function isSecretValue(value: string): boolean {
-  return SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(value));
+  return SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(value)) || CONNECTION_STRING_PATTERN.test(value);
 }
 
 export function redactMcpServers(servers: Record<string, McpServerConfig>): {
@@ -34,6 +34,15 @@ export function redactMcpServers(servers: Record<string, McpServerConfig>): {
 } {
   const redacted: Record<string, McpServerConfig> = {};
   const requiredEnvMap = new Map<string, RequiredEnv>();
+
+  const setRequiredEnv = (key: string, description: string, newIsSecret: boolean) => {
+    const existing = requiredEnvMap.get(key);
+    requiredEnvMap.set(key, {
+      key,
+      description: existing?.description || description,
+      isSecret: existing?.isSecret || newIsSecret
+    });
+  };
 
   for (const [serverName, config] of Object.entries(servers)) {
     const updatedConfig: McpServerConfig = { ...config };
@@ -46,19 +55,19 @@ export function redactMcpServers(servers: Record<string, McpServerConfig>): {
           // Already templated
           updatedEnv[envKey] = envVal;
           const varName = envVal.slice(2, -1);
-          requiredEnvMap.set(varName, {
-            key: varName,
-            description: `Environment variable for ${serverName}`,
-            isSecret: isSecretKey(envKey) || isSecretKey(varName) || isSecretValue(envVal)
-          });
+          setRequiredEnv(
+            varName,
+            `Environment variable for ${serverName}`,
+            isSecretKey(envKey) || isSecretKey(varName) || isSecretValue(envVal)
+          );
         } else if (isSecretKey(envKey) || isSecretValue(envVal)) {
           const placeholder = `\${${envKey}}`;
           updatedEnv[envKey] = placeholder;
-          requiredEnvMap.set(envKey, {
-            key: envKey,
-            description: `Secret credential for ${serverName} (${envKey})`,
-            isSecret: true
-          });
+          setRequiredEnv(
+            envKey,
+            `Secret credential for ${serverName} (${envKey})`,
+            true
+          );
         } else {
           updatedEnv[envKey] = envVal;
         }
@@ -73,29 +82,29 @@ export function redactMcpServers(servers: Record<string, McpServerConfig>): {
         if (arg.startsWith("${") && arg.endsWith("}")) {
           const varName = arg.slice(2, -1);
           updatedArgs.push(arg);
-          requiredEnvMap.set(varName, {
-            key: varName,
-            description: `Argument parameter for ${serverName}`,
-            isSecret: isSecretKey(varName)
-          });
+          setRequiredEnv(
+            varName,
+            `Argument parameter for ${serverName}`,
+            isSecretKey(varName)
+          );
         } else if (CONNECTION_STRING_PATTERN.test(arg)) {
           const safePrefix = serverName.replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
           const envKey = `${safePrefix}_DATABASE_URL`;
           updatedArgs.push(`\${${envKey}}`);
-          requiredEnvMap.set(envKey, {
-            key: envKey,
-            description: `Connection string for ${serverName}`,
-            isSecret: true
-          });
+          setRequiredEnv(
+            envKey,
+            `Connection string for ${serverName}`,
+            true
+          );
         } else if (isSecretValue(arg)) {
           const safePrefix = serverName.replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
           const envKey = `${safePrefix}_API_KEY`;
           updatedArgs.push(`\${${envKey}}`);
-          requiredEnvMap.set(envKey, {
-            key: envKey,
-            description: `API Key for ${serverName}`,
-            isSecret: true
-          });
+          setRequiredEnv(
+            envKey,
+            `API Key for ${serverName}`,
+            true
+          );
         } else {
           updatedArgs.push(arg);
         }
