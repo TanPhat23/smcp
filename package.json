@@ -1,0 +1,38 @@
+{
+  "name": "smcp",
+  "version": "0.1.0",
+  "description": "CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "smcp": "./bin/smcp.js"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "test": "bun test",
+    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "mcp",
+    "agent-skills",
+    "opencode",
+    "claude-code",
+    "cursor",
+    "model-context-protocol",
+    "cli"
+  ],
+  "author": "ghug",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  }
+}
