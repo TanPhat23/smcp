@@ -364,6 +364,20 @@ describe("Skill File Installer (installSkillFiles)", () => {
     expect(fs.readFileSync(deepScript, "utf8")).toBe("#!/bin/bash\necho hello");
   });
 
+  it("normalizes Windows-style backslashes in filenames across platforms", () => {
+    installSkillFiles(skillsBaseDir, "windows-pack-skill", {
+      "SKILL.md": "# Windows Pack Skill",
+      "references\\nested\\guide.md": "## Nested with backslashes"
+    });
+
+    const mainFile = path.join(skillsBaseDir, "windows-pack-skill", "SKILL.md");
+    const nestedDoc = path.join(skillsBaseDir, "windows-pack-skill", "references", "nested", "guide.md");
+
+    expect(fs.existsSync(mainFile)).toBe(true);
+    expect(fs.existsSync(nestedDoc)).toBe(true);
+    expect(fs.readFileSync(nestedDoc, "utf8")).toBe("## Nested with backslashes");
+  });
+
   it("creates skillsBaseDir and skill directory if they do not exist", () => {
     const freshBaseDir = path.join(testDir, "fresh-skills-dir");
     expect(fs.existsSync(freshBaseDir)).toBe(false);
@@ -446,6 +460,12 @@ describe("Skill File Installer (installSkillFiles)", () => {
 
     expect(() => {
       installSkillFiles(skillsBaseDir, "my-skill", {
+        "..\\..\\passwd": "root:x:0:0..."
+      });
+    }).toThrow(/traversal/i);
+
+    expect(() => {
+      installSkillFiles(skillsBaseDir, "my-skill", {
         "../sibling.txt": "leaked"
       });
     }).toThrow(/traversal/i);
@@ -453,6 +473,12 @@ describe("Skill File Installer (installSkillFiles)", () => {
     expect(() => {
       installSkillFiles(skillsBaseDir, "my-skill", {
         "nested/../../secret.txt": "stolen"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(() => {
+      installSkillFiles(skillsBaseDir, "my-skill", {
+        "nested\\..\\..\\secret.txt": "stolen"
       });
     }).toThrow(/traversal/i);
   });
@@ -474,7 +500,7 @@ describe("Skill File Installer (installSkillFiles)", () => {
       enumerable: true,
       configurable: true
     });
-    files.constructor = "evil-constructor-content";
+    (files as any).constructor = "evil-constructor-content";
     files.prototype = "evil-prototype-content";
 
     installSkillFiles(skillsBaseDir, "safe-skill", files);

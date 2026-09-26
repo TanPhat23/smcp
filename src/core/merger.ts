@@ -118,7 +118,8 @@ export function installSkillFiles(
         continue;
       }
 
-      const resolvedFilePath = path.resolve(targetDir, filename);
+      const normalizedFilename = filename.replaceAll("\\", "/");
+      const resolvedFilePath = path.resolve(targetDir, normalizedFilename);
       const relFile = path.relative(targetDir, resolvedFilePath);
 
       if (
