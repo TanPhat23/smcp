@@ -226,13 +226,14 @@ Commands:
 
 ## 4. Technical Stack & Implementation Details
 
-- **Runtime:** Node.js (>= 18.0.0), ECMAScript Modules (`"type": "module"`).
-- **Language:** TypeScript 5.x compiled with `tsc` to `dist/`.
+- **Runtime & Engine:** [Bun](https://bun.sh) (v1.3+), leveraging native TypeScript execution, high-performance file I/O, and native ESM.
+- **Package Management & Scripts:** Bun (`bun install`, `bun add`, `bun run`).
+- **Testing:** Built-in `bun test` runner for zero-dependency, sub-millisecond unit and integration tests.
+- **Distribution:** Published to npm for universal execution via `bunx smcp` or `npx smcp` (bundled with `bun build` to emit standard ESM executable in `dist/`).
 - **CLI Framework:** `commander` for command routing and argument parsing.
 - **Terminal UI / Prompts:** `@clack/prompts` and `picocolors` for interactive menus and clean terminal styling.
 - **Validation:** `zod` for strict runtime validation of manifests and agent profiles.
-- **HTTP / GitHub Client:** Native Node.js `fetch` (zero heavy external client dependencies).
-- **Testing:** `vitest` for fast, modern unit and integration tests.
+- **HTTP / GitHub Client:** Native `fetch` (built into Bun and modern Node.js, zero third-party dependencies).
 
 ---
 
@@ -250,7 +251,7 @@ Commands:
 
 ## 6. Testing Strategy
 
-1. **Unit Tests:**
+1. **Unit Tests (`bun test`):**
    - `redactor.test.ts`: Tests secret identification and `${VAR}` placeholder replacement.
    - `fingerprint.test.ts`: Verifies SHA-256 hash generation for files and JSON objects.
    - `agentRegistry.test.ts`: Tests profile loading, path expansion (`~` and environment vars), and custom agent additions.
