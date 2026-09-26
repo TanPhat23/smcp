@@ -206,15 +206,15 @@ describe("Config Merger (mergeMcpServersIntoFile)", () => {
 
     expect(() => {
       mergeMcpServersIntoFile(configPath, { evil: { command: "bad" } }, "__proto__");
-    }).toThrow();
+    }).toThrow(/Invalid mcpKey/);
 
     expect(() => {
       mergeMcpServersIntoFile(configPath, { evil: { command: "bad" } }, "constructor");
-    }).toThrow();
+    }).toThrow(/Invalid mcpKey/);
 
     expect(() => {
       mergeMcpServersIntoFile(configPath, { evil: { command: "bad" } }, "prototype");
-    }).toThrow();
+    }).toThrow(/Invalid mcpKey/);
 
     expect((Object.prototype as any).evil).toBeUndefined();
   });
@@ -311,6 +311,101 @@ describe("Config Merger (mergeMcpServersIntoFile)", () => {
     expect(raw).toContain('    "formattedServer": {');
     expect(raw).toContain('      "command": "node",');
     expect(raw).toContain('      "args": [\n        "run.js"\n      ]');
+  });
+
+  it("preserves symlink target when updating symlinked config file", () => {
+    const actualConfigPath = path.join(testDir, "actual-config.json");
+    const symlinkConfigPath = path.join(testDir, "symlink-config.json");
+
+    fs.writeFileSync(
+      actualConfigPath,
+      JSON.stringify(
+        {
+          mcpServers: {
+            existingServer: { command: "node", args: ["existing.js"] }
+          }
+        },
+        null,
+        2
+      ) + "\n"
+    );
+
+    fs.symlinkSync(actualConfigPath, symlinkConfigPath);
+
+    expect(fs.lstatSync(symlinkConfigPath).isSymbolicLink()).toBe(true);
+
+    mergeMcpServersIntoFile(symlinkConfigPath, {
+      newServer: { command: "python", args: ["added.py"] }
+    });
+
+    // Verify symlink itself was preserved (not replaced with a regular file)
+    expect(fs.lstatSync(symlinkConfigPath).isSymbolicLink()).toBe(true);
+    expect(fs.realpathSync(symlinkConfigPath)).toBe(fs.realpathSync(actualConfigPath));
+
+    // Verify content was merged into the actual target file
+    const targetContent = JSON.parse(fs.readFileSync(actualConfigPath, "utf8"));
+    expect(targetContent.mcpServers.existingServer).toEqual({
+      command: "node",
+      args: ["existing.js"]
+    });
+    expect(targetContent.mcpServers.newServer).toEqual({
+      command: "python",
+      args: ["added.py"]
+    });
+
+    // Reading through the symlink returns the updated content
+    const symlinkContent = JSON.parse(fs.readFileSync(symlinkConfigPath, "utf8"));
+    expect(symlinkContent.mcpServers.newServer).toEqual({
+      command: "python",
+      args: ["added.py"]
+    });
+  });
+
+  it("creates a backup file (.bak.) when existing config has corrupt/malformed JSON", () => {
+    const configPath = path.join(testDir, "corrupted-test.json");
+    const corruptContent = "{ this is completely broken json !!!";
+    fs.writeFileSync(configPath, corruptContent, "utf8");
+
+    mergeMcpServersIntoFile(configPath, {
+      recovered: { command: "node", args: ["recovered.js"] }
+    });
+
+    const dirFiles = fs.readdirSync(testDir);
+    const backupFiles = dirFiles.filter((f) => f.startsWith("corrupted-test.json.bak."));
+    expect(backupFiles.length).toBe(1);
+
+    const backupContent = fs.readFileSync(path.join(testDir, backupFiles[0]), "utf8");
+    expect(backupContent).toBe(corruptContent);
+
+    const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(updated.mcpServers.recovered).toEqual({
+      command: "node",
+      args: ["recovered.js"]
+    });
+  });
+
+  it("guards against newServers being an array", () => {
+    const configPath = path.join(testDir, "array-guard.json");
+    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: {} }), "utf8");
+
+    mergeMcpServersIntoFile(configPath, [{ command: "test" }] as unknown as Record<string, McpServerConfig>);
+
+    const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(updated.mcpServers).toEqual({});
+  });
+
+  it("preserves existing file permissions when updating config", () => {
+    if (process.platform === "win32") return;
+    const configPath = path.join(testDir, "mode-config.json");
+    fs.writeFileSync(configPath, JSON.stringify({ mcpServers: {} }), { mode: 0o600 });
+    fs.chmodSync(configPath, 0o600);
+
+    mergeMcpServersIntoFile(configPath, {
+      testServer: { command: "node" }
+    });
+
+    const stat = fs.statSync(configPath);
+    expect(stat.mode & 0o777).toBe(0o600);
   });
 });
 
@@ -422,33 +517,33 @@ describe("Skill File Installer (installSkillFiles)", () => {
   it("rejects invalid skillName with empty string, dots only, or path separators", () => {
     expect(() => {
       installSkillFiles(skillsBaseDir, "", { "SKILL.md": "test" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
 
     expect(() => {
       installSkillFiles(skillsBaseDir, ".", { "SKILL.md": "test" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
 
     expect(() => {
       installSkillFiles(skillsBaseDir, "..", { "SKILL.md": "test" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
 
     expect(() => {
       installSkillFiles(skillsBaseDir, "a/b", { "SKILL.md": "test" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
   });
 
   it("rejects prototype pollution keys in skillName (__proto__, constructor, prototype)", () => {
     expect(() => {
       installSkillFiles(skillsBaseDir, "__proto__", { "SKILL.md": "evil" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
 
     expect(() => {
       installSkillFiles(skillsBaseDir, "constructor", { "SKILL.md": "evil" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
 
     expect(() => {
       installSkillFiles(skillsBaseDir, "prototype", { "SKILL.md": "evil" });
-    }).toThrow();
+    }).toThrow(/invalid skill name/i);
   });
 
   it("rejects directory traversal in filenames with parent directory references", () => {
@@ -526,5 +621,59 @@ describe("Skill File Installer (installSkillFiles)", () => {
     });
 
     expect(fs.readFileSync(file, "utf8")).toBe("# Version 2.0");
+  });
+
+  it("detects and rejects symlinks pointing outside skillsBaseDir", () => {
+    const outsideDir = path.join(testDir, "outside-skills");
+    fs.mkdirSync(outsideDir, { recursive: true });
+
+    // Case 1: skill directory itself is a symlink pointing outside
+    const escapedSkillPath = path.join(skillsBaseDir, "escaped-skill");
+    fs.symlinkSync(outsideDir, escapedSkillPath);
+
+    expect(() => {
+      installSkillFiles(skillsBaseDir, "escaped-skill", {
+        "SKILL.md": "# Escaped Skill"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(fs.existsSync(path.join(outsideDir, "SKILL.md"))).toBe(false);
+
+    // Case 2: subpath/parent directory inside skill is a symlink pointing outside
+    const validSkillDir = path.join(skillsBaseDir, "valid-skill");
+    fs.mkdirSync(validSkillDir, { recursive: true });
+    const symlinkSubdir = path.join(validSkillDir, "linked-sub");
+    fs.symlinkSync(outsideDir, symlinkSubdir);
+
+    expect(() => {
+      installSkillFiles(skillsBaseDir, "valid-skill", {
+        "linked-sub/secret.txt": "leak"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(fs.existsSync(path.join(outsideDir, "secret.txt"))).toBe(false);
+
+    // Case 3: specific target file is a symlink pointing outside
+    const outsideFile = path.join(outsideDir, "target-file.txt");
+    fs.writeFileSync(outsideFile, "original", "utf8");
+    const symlinkFile = path.join(validSkillDir, "linked-file.txt");
+    fs.symlinkSync(outsideFile, symlinkFile);
+
+    expect(() => {
+      installSkillFiles(skillsBaseDir, "valid-skill", {
+        "linked-file.txt": "overwritten"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(fs.readFileSync(outsideFile, "utf8")).toBe("original");
+  });
+
+  it("guards against files being an array", () => {
+    installSkillFiles(skillsBaseDir, "array-skill", ["invalid-file"] as unknown as Record<string, string>);
+
+    const skillDir = path.join(skillsBaseDir, "array-skill");
+    expect(fs.existsSync(skillDir)).toBe(true);
+    const files = fs.readdirSync(skillDir);
+    expect(files.length).toBe(0);
   });
 });

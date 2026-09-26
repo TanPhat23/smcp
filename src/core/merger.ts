@@ -8,6 +8,15 @@ function isPrototypePollutionKey(key: string): boolean {
   return key === "__proto__" || key === "constructor" || key === "prototype";
 }
 
+function isStrictlyInside(baseDir: string, targetPath: string): boolean {
+  const rel = path.relative(baseDir, targetPath);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+    return false;
+  }
+  const normalizedBase = baseDir.endsWith(path.sep) ? baseDir : baseDir + path.sep;
+  return targetPath.startsWith(normalizedBase);
+}
+
 export function mergeMcpServersIntoFile(
   filePath: string,
   newServers: Record<string, McpServerConfig>,
@@ -22,16 +31,29 @@ export function mergeMcpServersIntoFile(
   }
 
   const resolvedPath = expandHome(filePath);
+  let writePath = resolvedPath;
 
   let config: Record<string, unknown> = {};
   if (fs.existsSync(resolvedPath)) {
+    const stat = fs.statSync(resolvedPath);
+    if (!stat.isFile()) {
+      throw new Error(`Target path is not a file: ${resolvedPath}`);
+    }
+    writePath = fs.realpathSync(resolvedPath);
+
+    let raw = "";
     try {
-      const raw = fs.readFileSync(resolvedPath, "utf8");
+      raw = fs.readFileSync(writePath, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         config = parsed;
       }
     } catch {
+      if (raw.trim().length > 0) {
+        const backupPath = `${resolvedPath}.bak.${Date.now()}`;
+        fs.writeFileSync(backupPath, raw, "utf8");
+        console.warn(`Warning: Corrupted config at ${resolvedPath} was backed up to ${backupPath}`);
+      }
       config = {};
     }
   }
@@ -57,7 +79,7 @@ export function mergeMcpServersIntoFile(
     config[mcpKey] = serversMap;
   }
 
-  if (newServers && typeof newServers === "object") {
+  if (newServers && typeof newServers === "object" && !Array.isArray(newServers)) {
     for (const [serverName, serverConfig] of Object.entries(newServers)) {
       if (isPrototypePollutionKey(serverName)) {
         continue;
@@ -67,7 +89,7 @@ export function mergeMcpServersIntoFile(
   }
 
   const content = JSON.stringify(config, null, 2) + "\n";
-  atomicWriteFileSync(resolvedPath, content);
+  atomicWriteFileSync(writePath, content);
 }
 
 export function installSkillFiles(
@@ -95,6 +117,10 @@ export function installSkillFiles(
   }
 
   const resolvedBaseDir = path.resolve(expandHome(skillsBaseDir));
+  let canonicalBaseDir = fs.existsSync(resolvedBaseDir)
+    ? fs.realpathSync(resolvedBaseDir)
+    : resolvedBaseDir;
+
   const targetDir = path.resolve(resolvedBaseDir, skillName);
   const relDir = path.relative(resolvedBaseDir, targetDir);
 
@@ -108,11 +134,37 @@ export function installSkillFiles(
     throw new Error(`Directory traversal detected in skill name: ${skillName}`);
   }
 
+  let targetExists = false;
+  try {
+    fs.lstatSync(targetDir);
+    targetExists = true;
+  } catch {
+    targetExists = false;
+  }
+
+  if (targetExists) {
+    try {
+      const realTargetDir = fs.realpathSync(targetDir);
+      if (!isStrictlyInside(canonicalBaseDir, realTargetDir)) {
+        throw new Error(`Directory traversal detected in skill name: ${skillName}`);
+      }
+    } catch (err: any) {
+      if (err.message?.includes("Directory traversal")) {
+        throw err;
+      }
+      throw new Error(`Directory traversal detected in skill name: ${skillName}`);
+    }
+  }
+
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
-  if (files && typeof files === "object") {
+  if (fs.existsSync(resolvedBaseDir)) {
+    canonicalBaseDir = fs.realpathSync(resolvedBaseDir);
+  }
+
+  if (files && typeof files === "object" && !Array.isArray(files)) {
     for (const [filename, content] of Object.entries(files)) {
       if (isPrototypePollutionKey(filename)) {
         continue;
@@ -132,9 +184,43 @@ export function installSkillFiles(
         throw new Error(`Directory traversal detected in filename: ${filename}`);
       }
 
+      const segments = relFile.split(/[/\\]/).filter(Boolean);
+      let currentCheckPath = targetDir;
+      for (const segment of segments) {
+        currentCheckPath = path.join(currentCheckPath, segment);
+        let exists = false;
+        try {
+          fs.lstatSync(currentCheckPath);
+          exists = true;
+        } catch {
+          exists = false;
+        }
+
+        if (exists) {
+          try {
+            const realCurrent = fs.realpathSync(currentCheckPath);
+            if (!isStrictlyInside(canonicalBaseDir, realCurrent)) {
+              throw new Error(`Directory traversal detected in filename: ${filename}`);
+            }
+          } catch (err: any) {
+            if (err.message?.includes("Directory traversal")) {
+              throw err;
+            }
+            throw new Error(`Directory traversal detected in filename: ${filename}`);
+          }
+        }
+      }
+
       const parentDir = path.dirname(resolvedFilePath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
+      }
+
+      if (fs.existsSync(parentDir)) {
+        const realParent = fs.realpathSync(parentDir);
+        if (!isStrictlyInside(canonicalBaseDir, realParent)) {
+          throw new Error(`Directory traversal detected in filename: ${filename}`);
+        }
       }
 
       const fileContent = typeof content === "string" ? content : String(content ?? "");

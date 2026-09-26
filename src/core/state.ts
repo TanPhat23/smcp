@@ -47,11 +47,20 @@ export function atomicWriteFileSync(
     `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   );
 
+  let targetMode = options?.mode;
+  if (targetMode === undefined && fs.existsSync(filePath)) {
+    try {
+      targetMode = fs.statSync(filePath).mode & 0o777;
+    } catch {
+      targetMode = undefined;
+    }
+  }
+
   try {
-    if (options?.mode !== undefined) {
-      fs.writeFileSync(tempFile, content, { mode: options.mode });
+    if (targetMode !== undefined) {
+      fs.writeFileSync(tempFile, content, { mode: targetMode });
       try {
-        fs.chmodSync(tempFile, options.mode);
+        fs.chmodSync(tempFile, targetMode);
       } catch {
         // Non-POSIX platforms
       }
@@ -61,9 +70,9 @@ export function atomicWriteFileSync(
 
     fs.renameSync(tempFile, filePath);
 
-    if (options?.mode !== undefined) {
+    if (targetMode !== undefined) {
       try {
-        fs.chmodSync(filePath, options.mode);
+        fs.chmodSync(filePath, targetMode);
       } catch {
         // Non-POSIX platforms
       }
