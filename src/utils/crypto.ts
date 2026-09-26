@@ -4,21 +4,20 @@ export function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function sortObjectDeep(obj: unknown): unknown {
+export function sortObjectDeep(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") {
     return obj;
   }
   if (Array.isArray(obj)) {
     return obj.map(sortObjectDeep);
   }
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(obj).sort()) {
-    sorted[key] = sortObjectDeep((obj as Record<string, unknown>)[key]);
-  }
-  return sorted;
+  const sortedEntries = Object.entries(obj)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, value]) => [key, sortObjectDeep(value)]);
+  return Object.fromEntries(sortedEntries);
 }
 
 export function hashObject(obj: unknown): string {
-  const canonical = JSON.stringify(sortObjectDeep(obj));
+  const canonical = JSON.stringify(sortObjectDeep(obj)) ?? "";
   return hashContent(canonical);
 }
