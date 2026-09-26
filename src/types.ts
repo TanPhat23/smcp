@@ -1,11 +1,16 @@
 import { z } from "zod";
 
-export const McpServerConfigSchema = z.object({
-  command: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  url: z.string().url().optional()
-});
+export const SEMVER_REGEX =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+export const McpServerConfigSchema = z
+  .object({
+    command: z.string().optional(),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    url: z.string().url().optional()
+  })
+  .passthrough();
 
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
@@ -29,8 +34,8 @@ export type RequiredEnv = z.infer<typeof RequiredEnvSchema>;
 
 export const ManifestSchema = z.object({
   $schema: z.string().optional(),
-  name: z.string().min(1),
-  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+  version: z.string().regex(SEMVER_REGEX),
   description: z.string().optional(),
   author: z.string().optional(),
   createdAt: z.string().optional(),
@@ -44,20 +49,26 @@ export type Manifest = z.infer<typeof ManifestSchema>;
 
 export const AgentProfileSchema = z.object({
   name: z.string(),
-  mcpConfig: z.object({
-    paths: z.array(z.string()),
-    key: z.string().default("mcpServers")
-  }).nullable().optional(),
-  skills: z.object({
-    paths: z.array(z.string())
-  }).nullable().optional()
+  mcpConfig: z
+    .object({
+      paths: z.array(z.string()),
+      key: z.string().default("mcpServers")
+    })
+    .nullable()
+    .optional(),
+  skills: z
+    .object({
+      paths: z.array(z.string())
+    })
+    .nullable()
+    .optional()
 });
 
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
 export const ShareRecordSchema = z.object({
   name: z.string(),
-  version: z.string(),
+  version: z.string().regex(SEMVER_REGEX),
   targetType: z.enum(["gist", "repo", "local"]),
   targetUrl: z.string(),
   gistId: z.string().optional(),
@@ -76,7 +87,10 @@ export const ShareHistorySchema = z.object({
 
 export type ShareHistory = z.infer<typeof ShareHistorySchema>;
 
-export interface AuthConfig {
-  githubToken?: string;
-  githubUser?: string;
-}
+export const AuthConfigSchema = z.object({
+  githubToken: z.string().optional(),
+  githubUser: z.string().optional()
+});
+
+export type AuthConfig = z.infer<typeof AuthConfigSchema>;
+
