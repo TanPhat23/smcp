@@ -78,6 +78,10 @@ describe("Secret Redactor Engine", () => {
     expect(isSecretKey("AWS_CREDENTIALS")).toBe(true);
     expect(isSecretKey("AUTH_HEADER")).toBe(true);
     expect(isSecretKey("PRIVATE_KEY_PATH")).toBe(true);
+    expect(isSecretKey("PASS")).toBe(true);
+    expect(isSecretKey("PASSPHRASE")).toBe(true);
+    expect(isSecretKey("USER_PASS")).toBe(true);
+    expect(isSecretKey("SSH_PASSPHRASE")).toBe(true);
     expect(isSecretKey("PORT")).toBe(false);
     expect(isSecretKey("NODE_ENV")).toBe(false);
     expect(isSecretKey("HOST")).toBe(false);
@@ -90,6 +94,12 @@ describe("Secret Redactor Engine", () => {
     expect(isSecretValue("github_pat_" + "a".repeat(82))).toBe(true);
     // OpenAI / Anthropic key
     expect(isSecretValue("sk-" + "a".repeat(30))).toBe(true);
+    // Stripe key (sk_live_...)
+    expect(isSecretValue("sk_live_" + "a".repeat(25))).toBe(true);
+    // Slack bot token (xoxb-...)
+    expect(isSecretValue("xoxb-1234567890-abcdef123456")).toBe(true);
+    // HuggingFace token (hf_...)
+    expect(isSecretValue("hf_" + "a".repeat(30))).toBe(true);
     // JWT token
     expect(isSecretValue("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U")).toBe(true);
     // Normal values
@@ -267,5 +277,80 @@ describe("Secret Redactor Engine", () => {
     const configVar = result2.requiredEnv.find(e => e.key === "CONFIG_VAR");
     expect(configVar).toBeDefined();
     expect(configVar?.isSecret).toBe(true);
+  });
+
+  it("redacts config.url with credentials to placeholder with isSecret: true", () => {
+    const servers: Record<string, McpServerConfig> = {
+      remoteService: {
+        url: "https://user:password@mcp.internal/sse"
+      }
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+    expect(redactedServers.remoteService.url).toBe("${REMOTESERVICE_URL}");
+    const envEntry = requiredEnv.find(e => e.key === "REMOTESERVICE_URL");
+    expect(envEntry).toBeDefined();
+    expect(envEntry?.isSecret).toBe(true);
+  });
+
+  it("assigns distinct variable names to multiple secret arguments on the same server", () => {
+    const servers: Record<string, McpServerConfig> = {
+      postgres: {
+        command: "npx",
+        args: [
+          "-y",
+          "@modelcontextprotocol/server-postgres",
+          "postgresql://user:secret1@localhost:5432/primary",
+          "postgresql://user:secret2@localhost:5432/replica"
+        ]
+      }
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+    expect(redactedServers.postgres.args?.[2]).toBe("${POSTGRES_DATABASE_URL}");
+    expect(redactedServers.postgres.args?.[3]).toBe("${POSTGRES_DATABASE_URL_2}");
+    expect(requiredEnv.some(e => e.key === "POSTGRES_DATABASE_URL" && e.isSecret)).toBe(true);
+    expect(requiredEnv.some(e => e.key === "POSTGRES_DATABASE_URL_2" && e.isSecret)).toBe(true);
+  });
+
+  it("does not naively slice composite template strings like ${HOST}:${PORT} into invalid variable names", () => {
+    const servers: Record<string, McpServerConfig> = {
+      compositeApp: {
+        command: "node",
+        args: ["--listen", "${HOST}:${PORT}"],
+        env: {
+          LISTEN_ADDR: "${HOST}:${PORT}",
+          MULTI_VAR: "${FOO}_${BAR}"
+        }
+      }
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+    expect(redactedServers.compositeApp.args?.[1]).toBe("${HOST}:${PORT}");
+    expect(redactedServers.compositeApp.env?.LISTEN_ADDR).toBe("${HOST}:${PORT}");
+    expect(redactedServers.compositeApp.env?.MULTI_VAR).toBe("${FOO}_${BAR}");
+
+    // Ensure no invalid variable names containing ':' or '}' or '{' were registered
+    expect(requiredEnv.some(e => e.key.includes(":") || e.key.includes("}") || e.key.includes("{"))).toBe(false);
+    expect(requiredEnv).toHaveLength(0);
+  });
+
+  it("generates POSIX-valid env var names for servers with leading digits", () => {
+    const servers: Record<string, McpServerConfig> = {
+      "1password": {
+        command: "op-mcp",
+        args: ["--api-key", "sk-" + "k".repeat(32)]
+      }
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+    expect(redactedServers["1password"].args?.[1]).toBe("${_1PASSWORD_API_KEY}");
+    const envEntry = requiredEnv.find(e => e.key === "_1PASSWORD_API_KEY");
+    expect(envEntry).toBeDefined();
+    expect(envEntry?.isSecret).toBe(true);
   });
 });
