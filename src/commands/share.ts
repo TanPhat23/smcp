@@ -219,38 +219,46 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   // 6. Pack Details
   let packName = options?.name;
   if (!packName) {
-    const answer = await p.text({
-      message: "Pack name:",
-      defaultValue: "my-agent-pack",
-      placeholder: "my-agent-pack",
-      validate: (val) => {
-        if (!val || !val.trim()) return "Pack name is required";
-        if (!/^[a-zA-Z0-9_-]+$/.test(val.trim())) {
-          return "Must be alphanumeric (hyphens/underscores allowed)";
+    if (!process.stdin.isTTY) {
+      packName = "my-agent-pack";
+    } else {
+      const answer = await p.text({
+        message: "Pack name:",
+        defaultValue: "my-agent-pack",
+        placeholder: "my-agent-pack",
+        validate: (val) => {
+          if (!val || !val.trim()) return "Pack name is required";
+          if (!/^[a-zA-Z0-9_-]+$/.test(val.trim())) {
+            return "Must be alphanumeric (hyphens/underscores allowed)";
+          }
+          return undefined;
         }
-        return undefined;
+      });
+      if (p.isCancel(answer) || typeof answer !== "string") {
+        p.cancel("Operation cancelled.");
+        return;
       }
-    });
-    if (p.isCancel(answer) || typeof answer !== "string") {
-      p.cancel("Operation cancelled.");
-      return;
+      packName = answer;
     }
-    packName = answer;
   }
   const cleanPackName = packName.trim();
 
   let packDesc = options?.description;
   if (packDesc === undefined) {
-    const answer = await p.text({
-      message: "Pack description:",
-      defaultValue: "Shared Skills and MCP stack",
-      placeholder: "Shared Skills and MCP stack"
-    });
-    if (p.isCancel(answer) || typeof answer !== "string") {
-      p.cancel("Operation cancelled.");
-      return;
+    if (!process.stdin.isTTY) {
+      packDesc = "Shared Skills and MCP stack";
+    } else {
+      const answer = await p.text({
+        message: "Pack description:",
+        defaultValue: "Shared Skills and MCP stack",
+        placeholder: "Shared Skills and MCP stack"
+      });
+      if (p.isCancel(answer) || typeof answer !== "string") {
+        p.cancel("Operation cancelled.");
+        return;
+      }
+      packDesc = typeof answer === "string" ? answer : "Shared Skills and MCP stack";
     }
-    packDesc = typeof answer === "string" ? answer : "Shared Skills and MCP stack";
   }
   const cleanPackDesc = (packDesc && packDesc.trim()) || "Shared Skills and MCP stack";
 
@@ -267,7 +275,7 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
         ? `${parts[0]}.${parts[1]}.${parts[2] + 1}`
         : "1.0.1";
 
-    if (options?.name !== undefined) {
+    if (options?.name !== undefined || !process.stdin.isTTY) {
       // In non-interactive mode, default to updating
       version = nextPatch;
       targetGistId = existingShare.gistId;

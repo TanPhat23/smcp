@@ -285,5 +285,112 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       });
       expect(output).toContain("Usage: smcp [options] [command]");
     });
+
+    it("executes end-to-end export, inspect, and install workflow via CLI binary", () => {
+      const e2eDir = path.join(testDir, "e2e-workflow");
+      const srcEnv = path.join(e2eDir, "src-env");
+      const targetEnv = path.join(e2eDir, "target-env");
+      const packDir = path.join(e2eDir, "exported-pack");
+
+      fs.mkdirSync(path.join(srcEnv, ".opencode", "skills", "e2e-skill"), { recursive: true });
+      fs.mkdirSync(path.join(targetEnv, ".opencode", "skills"), { recursive: true });
+
+      // Create source OpenCode config and skill
+      fs.writeFileSync(
+        path.join(srcEnv, "opencode.json"),
+        JSON.stringify({
+          mcpServers: {
+            "e2e-postgres": {
+              command: "npx",
+              args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass123@localhost:5432/mydb"],
+              env: { API_KEY: "sk-test12345678901234567890", APP_ENV: "production" }
+            }
+          }
+        }),
+        "utf8"
+      );
+      fs.writeFileSync(
+        path.join(srcEnv, ".opencode", "skills", "e2e-skill", "SKILL.md"),
+        "# E2E Skill\nSkill documentation.\n",
+        "utf8"
+      );
+
+      const isolatedSmcpDir = path.join(e2eDir, "smcp-state");
+
+      // 1. Export pack using CLI binary
+      const exportOutput = execSync(
+        `node "${binSmcp}" share -o "${packDir}" -s e2e-postgres -k e2e-skill`,
+        {
+          cwd: srcEnv,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            SMCP_DIR: isolatedSmcpDir
+          }
+        }
+      );
+      expect(exportOutput).toContain("Pack successfully exported");
+
+      // Verify smcp.json manifest and redaction
+      const manifestPath = path.join(packDir, "smcp.json");
+      expect(fs.existsSync(manifestPath)).toBe(true);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      expect(manifest.name).toBe("my-agent-pack");
+      expect(manifest.mcpServers["e2e-postgres"].args[2]).toBe("${E2E_POSTGRES_DATABASE_URL}");
+      expect(manifest.mcpServers["e2e-postgres"].env.API_KEY).toBe("${API_KEY}");
+      expect(manifest.mcpServers["e2e-postgres"].env.APP_ENV).toBe("production");
+      expect(manifest.requiredEnv.some((r: any) => r.key === "API_KEY" && r.isSecret)).toBe(true);
+      expect(manifest.requiredEnv.some((r: any) => r.key === "E2E_POSTGRES_DATABASE_URL" && r.isSecret)).toBe(true);
+
+      // 2. Inspect pack using CLI binary
+      const inspectOutput = execSync(`node "${binSmcp}" inspect "${packDir}"`, {
+        cwd: smcpRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          SMCP_DIR: isolatedSmcpDir
+        }
+      });
+      expect(inspectOutput).toContain("my-agent-pack");
+      expect(inspectOutput).toContain("API_KEY");
+      expect(inspectOutput).toContain("e2e-postgres");
+      expect(inspectOutput).toContain("e2e-skill");
+
+      // 3. Install pack into target environment using CLI binary
+      fs.writeFileSync(
+        path.join(targetEnv, "opencode.json"),
+        JSON.stringify({ mcpServers: { existingServer: { command: "echo", args: ["ready"] } } }),
+        "utf8"
+      );
+
+      const installOutput = execSync(
+        `node "${binSmcp}" install "${packDir}" -a opencode -f`,
+        {
+          cwd: targetEnv,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            SMCP_DIR: isolatedSmcpDir,
+            API_KEY: "real-prod-api-key",
+            E2E_POSTGRES_DATABASE_URL: "postgresql://prod:secret@cluster:5432/live"
+          }
+        }
+      );
+      expect(installOutput).toContain("Installation completed");
+
+      // 4. Verify target configuration and installed files
+      const targetConfig = JSON.parse(fs.readFileSync(path.join(targetEnv, "opencode.json"), "utf8"));
+      expect(targetConfig.mcpServers.existingServer).toBeDefined();
+      expect(targetConfig.mcpServers["e2e-postgres"]).toBeDefined();
+      expect(targetConfig.mcpServers["e2e-postgres"].args[2]).toBe("postgresql://prod:secret@cluster:5432/live");
+      expect(targetConfig.mcpServers["e2e-postgres"].env.API_KEY).toBe("real-prod-api-key");
+      expect(targetConfig.mcpServers["e2e-postgres"].env.APP_ENV).toBe("production");
+
+      const installedSkillDoc = fs.readFileSync(
+        path.join(targetEnv, ".opencode", "skills", "e2e-skill", "SKILL.md"),
+        "utf8"
+      );
+      expect(installedSkillDoc).toContain("# E2E Skill");
+    });
   });
 });

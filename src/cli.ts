@@ -22,6 +22,8 @@ export function createProgram(): Command {
     .option("-a, --agents <agents...>", "Filter source agents to share from")
     .option("-s, --servers <servers...>", "Specific MCP servers to share")
     .option("-k, --skills <skills...>", "Specific skills to share")
+    .option("-n, --name <name>", "Pack name")
+    .option("-d, --description <description>", "Pack description")
     .action(async (options) => {
       await shareCommand(options);
     });
