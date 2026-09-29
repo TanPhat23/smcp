@@ -3,7 +3,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { GitHubClient, setDefaultAxiosAdapter } from "../src/core/github.ts";
-import { collectRequiredEnv, loadPackFromSource } from "../src/core/pack/index.ts";
+import {
+  collectRequiredEnv,
+  getAllPackLoaders,
+  loadPackFromSource,
+  registerPackLoader,
+  resetPackLoaders,
+  unregisterPackLoader,
+  type PackLoader
+} from "../src/core/pack/index.ts";
 import type { Manifest } from "../src/types/index.ts";
 
 describe("Pack Loader & Required Env Collector (src/core/pack.ts)", () => {
@@ -335,6 +343,106 @@ describe("Pack Loader & Required Env Collector (src/core/pack.ts)", () => {
       const collected = collectRequiredEnv(manifest);
       expect(collected.filter((c) => c.key === "MY_TOKEN")).toHaveLength(1);
       expect(collected[0].description).toBe("Primary token");
+    });
+  });
+
+  describe("PackLoader Registry & Extensibility", () => {
+    afterEach(() => {
+      resetPackLoaders();
+    });
+
+    it("registers custom pack loader that intercepts custom source schemes", async () => {
+      const customLoader: PackLoader = {
+        name: "gitlab-loader",
+        matches: (ctx) => ctx.source.startsWith("gitlab:"),
+        load: async (ctx) => ({
+          manifest: {
+            name: "gitlab-pack",
+            version: "1.0.0",
+            description: `Loaded from ${ctx.source}`
+          },
+          rawFiles: { "README.md": "GitLab Pack Content" }
+        })
+      };
+
+      registerPackLoader(customLoader);
+
+      const loaders = getAllPackLoaders();
+      expect(loaders[0].name).toBe("gitlab-loader");
+
+      const loaded = await loadPackFromSource("gitlab:org/project#main");
+      expect(loaded.manifest.name).toBe("gitlab-pack");
+      expect(loaded.manifest.description).toContain("gitlab:org/project#main");
+      expect(loaded.rawFiles["README.md"]).toBe("GitLab Pack Content");
+    });
+
+    it("validates loader schema and rejects prototype pollution names", () => {
+      expect(() =>
+        registerPackLoader(null as any)
+      ).toThrow(/Invalid PackLoader/);
+
+      expect(() =>
+        registerPackLoader({} as any)
+      ).toThrow(/Invalid loader name/);
+
+      expect(() =>
+        registerPackLoader({
+          name: "__proto__",
+          matches: () => true,
+          load: async () => ({} as any)
+        })
+      ).toThrow(/prototype pollution key '__proto__'/);
+
+      expect(() =>
+        registerPackLoader({
+          name: "invalid/name",
+          matches: () => true,
+          load: async () => ({} as any)
+        })
+      ).toThrow(/Invalid loader name/);
+    });
+
+    it("unregisters loader by name and restores defaults via resetPackLoaders", () => {
+      const dummyLoader: PackLoader = {
+        name: "dummy-loader",
+        matches: () => false,
+        load: async () => ({} as any)
+      };
+
+      registerPackLoader(dummyLoader);
+      expect(getAllPackLoaders().some((l) => l.name === "dummy-loader")).toBe(true);
+
+      const unregistered = unregisterPackLoader("dummy-loader");
+      expect(unregistered).toBe(true);
+      expect(getAllPackLoaders().some((l) => l.name === "dummy-loader")).toBe(false);
+
+      registerPackLoader(dummyLoader);
+      resetPackLoaders();
+      expect(getAllPackLoaders().some((l) => l.name === "dummy-loader")).toBe(false);
+    });
+
+    it("isolates errors if custom loader matches() throws", async () => {
+      const buggyLoader: PackLoader = {
+        name: "buggy-loader",
+        matches: () => {
+          throw new Error("Unexpected error in matches");
+        },
+        load: async () => ({} as any)
+      };
+
+      registerPackLoader(buggyLoader);
+
+      // Loading a local source should still succeed because buggy loader error is isolated
+      const localDir = path.join(tmpDir, "local-bug-test");
+      fs.mkdirSync(localDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localDir, "smcp.json"),
+        JSON.stringify({ name: "fallback-pass-pack", version: "1.0.0" }),
+        "utf8"
+      );
+
+      const loaded = await loadPackFromSource(localDir);
+      expect(loaded.manifest.name).toBe("fallback-pass-pack");
     });
   });
 });

@@ -9,35 +9,19 @@ import {
   readInstalledPlugins,
   scanSkills
 } from "../../core/agents/index.ts";
-import { GitHubClient, generatePackReadme } from "../../core/github.ts";
 import { redactMcpServers } from "../../core/redactor/index.ts";
-import { getAuthConfig, getSharesHistory, recordShare } from "../../core/state/index.ts";
-import type { Manifest, McpServerConfig, PluginEntry, SkillEntry } from "../../types/index.ts";
-import { hashObject } from "../../utils/crypto.ts";
-import { authLoginCommand } from "../auth/index.ts";
+import { getSharesHistory } from "../../core/state/index.ts";
+import type {
+  Manifest,
+  McpServerConfig,
+  PluginEntry,
+  ShareCommandOptions,
+  SkillEntry
+} from "../../types/index.ts";
 import { bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
-import { exportPackLocally } from "./export.ts";
+import { getAllShareProviders, getShareProvider } from "./providers/index.ts";
 
-export interface ShareCommandOptions {
-  provider?: "gist" | "repo" | "local" | string;
-  repo?: string;
-  branch?: string;
-  output?: string;
-  name?: string;
-  description?: string;
-  servers?: string[];
-  skills?: string[];
-  plugins?: string[];
-  agents?: string[];
-  isPublic?: boolean;
-  public?: boolean;
-  settings?: boolean;
-  json?: boolean;
-  yes?: boolean;
-  secretKeys?: string[];
-  secretValues?: string[];
-  excludeSecretKeys?: string[];
-}
+export type { ShareCommandOptions } from "../../types/index.ts";
 
 export async function shareCommand(options?: ShareCommandOptions): Promise<void> {
   const isAgentMode = Boolean(options?.json);
@@ -338,9 +322,10 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     targetProvider = "repo";
     targetRepoInput = options.repo.trim();
   } else if (options?.provider) {
-    const pChoice = options.provider.trim().toLowerCase();
-    if (pChoice !== "gist" && pChoice !== "repo" && pChoice !== "local") {
-      const errMsg = `Unsupported provider: ${options.provider}. Supported providers: gist, repo, local.`;
+    const resolvedProvider = getShareProvider(options.provider);
+    if (!resolvedProvider) {
+      const supported = getAllShareProviders().map((p) => p.id).join(", ");
+      const errMsg = `Unsupported provider: ${options.provider}. Supported providers: ${supported}.`;
       if (isAgentMode) {
         console.error(JSON.stringify({ success: false, error: errMsg }));
       } else {
@@ -348,32 +333,21 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
       }
       return;
     }
-    targetProvider = pChoice as "gist" | "repo" | "local";
+    targetProvider = resolvedProvider.id as "gist" | "repo" | "local";
     if (targetProvider === "local") {
       targetLocalOutDir = path.resolve(`./${cleanPackName}`);
     }
   } else if (isNonInteractive) {
     targetProvider = "gist";
   } else {
+    const availableProviders = getAllShareProviders();
     const providerPrompt = await p.select({
       message: "Choose share provider:",
-      options: [
-        {
-          value: "gist",
-          label: "GitHub Gist",
-          hint: "Publish to GitHub Gist online (public or secret)"
-        },
-        {
-          value: "repo",
-          label: "GitHub Repository",
-          hint: "Publish to a GitHub repository (creates or updates repo)"
-        },
-        {
-          value: "local",
-          label: "Local Directory",
-          hint: "Export pack directly to a local folder"
-        }
-      ],
+      options: availableProviders.map((pr) => ({
+        value: pr.id,
+        label: pr.label,
+        hint: pr.hint
+      })),
       initialValue: "gist"
     });
     if (p.isCancel(providerPrompt)) {
@@ -485,456 +459,35 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
 
   gistFiles["smcp.json"] = { content: JSON.stringify(manifest, null, 2) };
 
-  // 9. Local export if targetProvider === "local"
-  if (targetProvider === "local") {
-    const outDir = targetLocalOutDir || path.resolve(`./${cleanPackName}`);
-    exportPackLocally(manifest, bundledSkills, outDir, bundledPlugins);
-
-    const serverFingerprints: Record<string, string> = {};
-    for (const [k, v] of Object.entries(redactedServers)) {
-      serverFingerprints[k] = hashObject(v);
-    }
-    const skillFingerprints: Record<string, string> = {};
-    for (const sk of bundledSkills) {
-      skillFingerprints[sk.name] = sk.contentHash || "";
-    }
-
-    recordShare({
-      name: cleanPackName,
-      version,
-      targetType: "local",
-      targetUrl: outDir,
-      lastSharedAt: new Date().toISOString(),
-      fingerprints: {
-        mcpServers: serverFingerprints,
-        skills: skillFingerprints
-      }
-    });
-
+  // 9. Publish via resolved ShareProvider
+  const provider = getShareProvider(targetProvider);
+  if (!provider) {
+    const errMsg = `Unknown share provider: ${targetProvider}`;
     if (isAgentMode) {
-      console.log(
-        JSON.stringify(
-          {
-            success: true,
-            pack: cleanPackName,
-            version,
-            type: "local",
-            provider: "local",
-            location: outDir,
-            servers: Object.keys(selectedServers),
-            skills: selectedSkills.map((s) => s.name),
-            plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
-          },
-          null,
-          2
-        )
-      );
-      return;
+      console.error(JSON.stringify({ success: false, error: errMsg }));
+    } else {
+      p.cancel(errMsg);
     }
-
-    p.outro(pc.green(`✔ Pack successfully exported to ${outDir}`));
     return;
   }
 
-  // 9b. GitHub Repository Publishing
-  if (targetProvider === "repo") {
-    let auth = getAuthConfig();
-    if (!auth.githubToken) {
-      if (isNonInteractive) {
-        const errMsg =
-          "Cannot publish to GitHub repository without authentication. Run 'smcp auth login' or export locally with --output <dir>.";
-        if (isAgentMode) {
-          console.error(JSON.stringify({ success: false, error: errMsg }));
-        } else {
-          p.cancel(errMsg);
-        }
-        return;
-      }
-      await authLoginCommand();
-      auth = getAuthConfig();
-      if (!auth.githubToken) {
-        p.cancel("Cannot publish without GitHub token.");
-        return;
-      }
-    }
-
-    let client = new GitHubClient(auth.githubToken);
-    let userLogin = "";
-    let userScopes: string[] | undefined;
-    try {
-      const user = await client.verifyUser();
-      userLogin = user.login;
-      userScopes = user.scopes;
-    } catch (err: unknown) {
-      const errMsg = `GitHub Authentication failed: ${err instanceof Error ? err.message : String(err)}`;
-      if (isAgentMode) {
-        console.error(JSON.stringify({ success: false, error: errMsg }));
-      } else {
-        p.cancel(errMsg);
-      }
-      return;
-    }
-
-    // Permission scope check: if user has classic/OAuth token without repo permissions
-    if (
-      userScopes &&
-      userScopes.length > 0 &&
-      !userScopes.includes("repo") &&
-      !userScopes.includes("public_repo")
-    ) {
-      const warnMsg = `Your current token has scopes [${userScopes.join(", ")}], which lacks the 'repo' scope required to publish repositories.`;
-
-      if (isNonInteractive) {
-        const errMsg = `${warnMsg}\nTo fix: run 'smcp auth login' with a token having 'repo' scope, or share to Gist via '-P gist' or local via '-o <dir>'.`;
-        if (isAgentMode) {
-          console.error(JSON.stringify({ success: false, error: errMsg }));
-        } else {
-          p.cancel(errMsg);
-        }
-        return;
-      }
-
-      p.log.warn(pc.yellow(warnMsg));
-      const recoveryChoice = await p.select({
-        message: "How would you like to proceed?",
-        options: [
-          {
-            value: "gist",
-            label: "Fallback to GitHub Gist (Recommended)",
-            hint: "Works with your current 'gist' token"
-          },
-          {
-            value: "reauth",
-            label: "Re-authenticate now with a token that has 'repo' scope",
-            hint: "Opens prompt to enter updated PAT"
-          },
-          {
-            value: "local",
-            label: "Export pack to a local directory instead",
-            hint: "Saves files to disk without GitHub upload"
-          }
-        ]
-      });
-
-      if (p.isCancel(recoveryChoice)) {
-        p.cancel("Operation cancelled.");
-        return;
-      }
-
-      if (recoveryChoice === "gist") {
-        targetProvider = "gist";
-      } else if (recoveryChoice === "local") {
-        const dirPrompt = await p.text({
-          message: "Export folder path:",
-          defaultValue: `./${cleanPackName}`,
-          placeholder: `./${cleanPackName}`,
-          validate: (val) => (!val || !val.trim() ? "Folder path is required" : undefined)
-        });
-        if (p.isCancel(dirPrompt) || typeof dirPrompt !== "string") {
-          p.cancel("Operation cancelled.");
-          return;
-        }
-        const outDir = path.resolve(dirPrompt.trim());
-        exportPackLocally(manifest, bundledSkills, outDir, bundledPlugins);
-
-        const serverFingerprints: Record<string, string> = {};
-        for (const [k, v] of Object.entries(redactedServers)) {
-          serverFingerprints[k] = hashObject(v);
-        }
-        const skillFingerprints: Record<string, string> = {};
-        for (const sk of bundledSkills) {
-          skillFingerprints[sk.name] = sk.contentHash || "";
-        }
-
-        recordShare({
-          name: cleanPackName,
-          version,
-          targetType: "local",
-          targetUrl: outDir,
-          lastSharedAt: new Date().toISOString(),
-          fingerprints: {
-            mcpServers: serverFingerprints,
-            skills: skillFingerprints
-          }
-        });
-
-        p.outro(pc.green(`✔ Pack successfully exported to ${outDir}`));
-        return;
-      } else if (recoveryChoice === "reauth") {
-        await authLoginCommand();
-        auth = getAuthConfig();
-        if (!auth.githubToken) {
-          p.cancel("Cannot publish without GitHub token.");
-          return;
-        }
-        client = new GitHubClient(auth.githubToken);
-        try {
-          const user = await client.verifyUser();
-          userLogin = user.login;
-        } catch {
-          // continue with input
-        }
-      }
-    }
-
-    if (targetProvider === "repo") {
-      let repoFullName = targetRepoInput || cleanPackName;
-      let owner = userLogin;
-      let repoName = repoFullName;
-      if (repoFullName.includes("/")) {
-        const parts = repoFullName.split("/");
-        owner = parts[0];
-        repoName = parts[1];
-      } else {
-        repoFullName = `${owner}/${repoName}`;
-      }
-
-      let isPublic = options?.isPublic ?? options?.public;
-      if (isPublic === undefined) {
-        if (isNonInteractive) {
-          isPublic = true;
-        } else {
-          const answer = await p.confirm({
-            message: `Make repository ${repoFullName} public? (No = private repository)`,
-            initialValue: true
-          });
-          if (p.isCancel(answer)) {
-            p.cancel("Operation cancelled.");
-            return;
-          }
-          isPublic = Boolean(answer);
-        }
-      }
-
-      let sPub: any;
-      if (!isAgentMode) {
-        sPub = p.spinner();
-        sPub.start(`Publishing pack to GitHub repository ${repoFullName}...`);
-      }
-
-      try {
-        const repoFiles: Record<string, string> = {
-          "smcp.json": JSON.stringify(manifest, null, 2) + "\n",
-          "README.md": generatePackReadme(manifest, repoFullName)
-        };
-
-        for (const sk of bundledSkills) {
-          if (sk.files) {
-            for (const [fn, cnt] of Object.entries(sk.files)) {
-              repoFiles[`skills/${sk.name}/${fn.replaceAll("\\", "/")}`] = cnt;
-            }
-          }
-        }
-
-        for (const pl of bundledPlugins) {
-          if (typeof pl === "object" && pl.files) {
-            for (const [fn, cnt] of Object.entries(pl.files)) {
-              repoFiles[`plugins/${pl.name}/${fn.replaceAll("\\", "/")}`] = cnt;
-            }
-          }
-        }
-
-        const res = await client.commitFilesToRepo({
-          owner,
-          repo: repoName,
-          branch: options?.branch,
-          message: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
-          files: repoFiles,
-          isPublic,
-          description: cleanPackDesc
-        });
-
-        const serverFingerprints: Record<string, string> = {};
-        for (const [k, v] of Object.entries(redactedServers)) {
-          serverFingerprints[k] = hashObject(v);
-        }
-        const skillFingerprints: Record<string, string> = {};
-        for (const sk of bundledSkills) {
-          skillFingerprints[sk.name] = sk.contentHash || "";
-        }
-
-        recordShare({
-          name: cleanPackName,
-          version,
-          targetType: "repo",
-          targetUrl: res.html_url,
-          repoFullName,
-          lastSharedAt: new Date().toISOString(),
-          fingerprints: {
-            mcpServers: serverFingerprints,
-            skills: skillFingerprints
-          }
-        });
-
-        if (isAgentMode) {
-          console.log(
-            JSON.stringify(
-              {
-                success: true,
-                pack: cleanPackName,
-                version,
-                type: "repo",
-                provider: "repo",
-                url: res.html_url,
-                repo: repoFullName,
-                commit: res.commitSha,
-                branch: res.branch,
-                servers: Object.keys(selectedServers),
-                skills: selectedSkills.map((s) => s.name),
-                plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
-              },
-              null,
-              2
-            )
-          );
-          return;
-        }
-
-        if (sPub) {
-          sPub.stop(pc.green(`✔ Pack successfully published to GitHub Repository: ${res.html_url}`));
-        }
-        p.outro(pc.cyan(`Install via: smcp install ${res.html_url}`));
-        return;
-      } catch (err: unknown) {
-        const errMsg = `Failed to publish repository: ${err instanceof Error ? err.message : String(err)}`;
-        if (sPub) {
-          sPub.stop(pc.red("✖ Publish failed."));
-        }
-        if (isAgentMode) {
-          console.error(JSON.stringify({ success: false, error: errMsg }));
-        } else {
-          p.cancel(errMsg);
-        }
-        return;
-      }
-    }
-  }
-
-  // 10. GitHub Gist Publishing
-  let auth = getAuthConfig();
-  if (!auth.githubToken) {
-    if (isNonInteractive) {
-      const errMsg = "Cannot publish to GitHub Gist without authentication. Run 'smcp auth login' or export locally with --output <dir>.";
-      if (isAgentMode) {
-        console.error(JSON.stringify({ success: false, error: errMsg }));
-      } else {
-        p.cancel(errMsg);
-      }
-      return;
-    }
-    await authLoginCommand();
-    auth = getAuthConfig();
-    if (!auth.githubToken) {
-      p.cancel("Cannot publish without GitHub token.");
-      return;
-    }
-  }
-
-  let isPublic = options?.isPublic;
-  if (isPublic === undefined) {
-    if (isNonInteractive) {
-      isPublic = false;
-    } else {
-      const answer = await p.confirm({
-        message: "Make Gist public? (No = secret unlisted Gist)",
-        initialValue: true
-      });
-      if (p.isCancel(answer)) {
-        p.cancel("Operation cancelled.");
-        return;
-      }
-      isPublic = Boolean(answer);
-    }
-  }
-
-  let sPub: any;
-  if (!isAgentMode) {
-    sPub = p.spinner();
-    sPub.start("Publishing pack to GitHub Gist...");
-  }
-
-  try {
-    const client = new GitHubClient(auth.githubToken);
-    let resultUrl = "";
-    let finalGistId = targetGistId;
-
-    if (targetGistId) {
-      const res = await client.updateGist(targetGistId, {
-        description: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
-        files: gistFiles
-      });
-      resultUrl = res.html_url;
-    } else {
-      const res = await client.createGist({
-        description: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
-        public: isPublic,
-        files: gistFiles
-      });
-      resultUrl = res.html_url;
-      finalGistId = res.id;
-    }
-
-    const serverFingerprints: Record<string, string> = {};
-    for (const [k, v] of Object.entries(redactedServers)) {
-      serverFingerprints[k] = hashObject(v);
-    }
-    const skillFingerprints: Record<string, string> = {};
-    for (const sk of bundledSkills) {
-      skillFingerprints[sk.name] = sk.contentHash || "";
-    }
-
-    recordShare({
-      name: cleanPackName,
-      version,
-      targetType: "gist",
-      targetUrl: resultUrl,
-      gistId: finalGistId,
-      lastSharedAt: new Date().toISOString(),
-      fingerprints: {
-        mcpServers: serverFingerprints,
-        skills: skillFingerprints
-      }
-    });
-
-    if (isAgentMode) {
-      console.log(
-        JSON.stringify(
-          {
-            success: true,
-            pack: cleanPackName,
-            version,
-            type: "gist",
-            location: resultUrl,
-            gistId: finalGistId,
-            servers: Object.keys(selectedServers),
-            skills: selectedSkills.map((s) => s.name),
-            plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
-          },
-          null,
-          2
-        )
-      );
-      return;
-    }
-
-    if (sPub) {
-      sPub.stop(pc.green(`✔ Pack published: ${pc.bold(resultUrl)}`));
-    }
-
-    p.note(
-      `Share this pack with anyone:\n  ${pc.cyan(`npx smcp install ${resultUrl}`)}`,
-      "Share Command"
-    );
-    p.outro(pc.green("Done!"));
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (sPub) {
-      sPub.stop(pc.red("✖ Failed to publish pack"));
-    }
-    if (isAgentMode) {
-      console.error(JSON.stringify({ success: false, error: message }));
-    } else {
-      p.cancel(message);
-    }
-  }
+  await provider.publish({
+    manifest,
+    bundledSkills,
+    bundledPlugins,
+    redactedServers,
+    selectedServers,
+    selectedSkills,
+    selectedPlugins,
+    gistFiles,
+    options,
+    isNonInteractive,
+    isAgentMode,
+    version,
+    cleanPackName,
+    cleanPackDesc,
+    targetGistId,
+    targetRepoInput,
+    targetLocalOutDir
+  });
 }

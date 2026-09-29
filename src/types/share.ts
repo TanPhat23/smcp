@@ -22,3 +22,24 @@ export const ShareHistorySchema = z.object({
 });
 
 export type ShareHistory = z.infer<typeof ShareHistorySchema>;
+
+export interface ShareCommandOptions {
+  provider?: "gist" | "repo" | "local" | string;
+  repo?: string;
+  branch?: string;
+  output?: string;
+  name?: string;
+  description?: string;
+  servers?: string[];
+  skills?: string[];
+  plugins?: string[];
+  agents?: string[];
+  isPublic?: boolean;
+  public?: boolean;
+  settings?: boolean;
+  json?: boolean;
+  yes?: boolean;
+  secretKeys?: string[];
+  secretValues?: string[];
+  excludeSecretKeys?: string[];
+}
