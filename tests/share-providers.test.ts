@@ -11,8 +11,8 @@ import {
   unregisterShareProvider,
   type ShareProvider,
   type ShareProviderContext
-} from "../src/commands/share/index.ts";
-import { saveCustomAgent } from "../src/core/agents/index.ts";
+} from "../packages/cli/src/commands/share/index.ts";
+import { saveCustomAgent } from "../packages/core/src/core/agents/index.ts";
 
 describe("ShareProvider Registry & Extensibility", () => {
   let testDir: string;

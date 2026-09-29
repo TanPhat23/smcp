@@ -6,7 +6,7 @@ import {
   atomicWriteFileAsync,
   collectDirectoryFilesAsync,
   isIgnoredPath
-} from "../src/utils/fs.ts";
+} from "../packages/core/src/utils/fs.ts";
 
 describe("High-Efficiency File Engine", () => {
   it("filters out default ignored patterns like node_modules and .git", () => {

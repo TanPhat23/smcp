@@ -7,7 +7,7 @@ import {
   authLoginCommand,
   authLogoutCommand,
   authStatusCommand
-} from "../src/commands/auth/index.ts";
+} from "../packages/cli/src/commands/auth/index.ts";
 import {
   getAllAuthProviders,
   getAuthProvider,
@@ -17,8 +17,8 @@ import {
   unregisterAuthProvider,
   type AuthProvider,
   type AuthUser
-} from "../src/core/auth/index.ts";
-import { GitHubClient } from "../src/core/github.ts";
+} from "../packages/core/src/core/auth/index.ts";
+import { GitHubClient } from "../packages/core/src/core/github.ts";
 import {
   clearAuthConfig,
   clearProviderAuth,
@@ -27,8 +27,8 @@ import {
   getStoredAuthConfig,
   saveAuthConfig,
   saveProviderAuth
-} from "../src/core/state/index.ts";
-import { AuthConfigSchema, ProviderAuthInfoSchema } from "../src/types/index.ts";
+} from "../packages/core/src/core/state/index.ts";
+import { AuthConfigSchema, ProviderAuthInfoSchema } from "../packages/core/src/types/index.ts";
 
 describe("Pluggable Auth Provider Strategy & Registry", () => {
   let testDir: string;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { GitHubClient, setDefaultAxiosAdapter } from "../src/core/github.ts";
+import { GitHubClient, setDefaultAxiosAdapter } from "../packages/core/src/core/github.ts";
 import {
   collectRequiredEnv,
   getAllPackLoaders,
@@ -11,8 +11,8 @@ import {
   resetPackLoaders,
   unregisterPackLoader,
   type PackLoader
-} from "../src/core/pack/index.ts";
-import type { Manifest } from "../src/types/index.ts";
+} from "../packages/core/src/core/pack/index.ts";
+import type { Manifest } from "../packages/core/src/types/index.ts";
 
 describe("Pack Loader & Required Env Collector (src/core/pack.ts)", () => {
   let tmpDir: string;

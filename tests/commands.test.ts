@@ -7,9 +7,9 @@ import {
   agentAddCommand,
   agentInstallSkillCommand,
   agentListCommand
-} from "../src/commands/agent/index.ts";
-import { instructionsCommand } from "../src/commands/instructions.ts";
-import { authLoginCommand, authLogoutCommand, authStatusCommand } from "../src/commands/auth/index.ts";
+} from "../packages/cli/src/commands/agent/index.ts";
+import { instructionsCommand } from "../packages/cli/src/commands/instructions.ts";
+import { authLoginCommand, authLogoutCommand, authStatusCommand } from "../packages/cli/src/commands/auth/index.ts";
 import {
   extractPluginFiles,
   extractSkillFiles,
@@ -17,18 +17,18 @@ import {
   installPackIntoAgents,
   resolveActiveAgentPath,
   resolveMcpServerTemplates
-} from "../src/commands/install/index.ts";
-import { listCommand } from "../src/commands/list.ts";
+} from "../packages/cli/src/commands/install/index.ts";
+import { listCommand } from "../packages/cli/src/commands/list.ts";
 import {
   bundlePluginFiles,
   bundleSkillFiles,
   exportPackLocally,
   shareCommand
-} from "../src/commands/share/index.ts";
-import { getAgentProfiles, saveCustomAgent } from "../src/core/agents/index.ts";
-import { GitHubClient } from "../src/core/github.ts";
-import { clearAuthConfig, getAuthConfig, getSharesHistory, recordShare, saveAuthConfig } from "../src/core/state/index.ts";
-import type { AgentProfile, Manifest, McpServerConfig, PluginEntry, SkillEntry } from "../src/types/index.ts";
+} from "../packages/cli/src/commands/share/index.ts";
+import { getAgentProfiles, saveCustomAgent } from "../packages/core/src/core/agents/index.ts";
+import { GitHubClient } from "../packages/core/src/core/github.ts";
+import { clearAuthConfig, getAuthConfig, getSharesHistory, recordShare, saveAuthConfig } from "../packages/core/src/core/state/index.ts";
+import type { AgentProfile, Manifest, McpServerConfig, PluginEntry, SkillEntry } from "../packages/core/src/types/index.ts";
 
 describe("Commands Implementation", () => {
   let testDir: string;

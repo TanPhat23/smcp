@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { saveCustomAgent } from "../src/core/agents/index.ts";
+import { saveCustomAgent } from "../packages/core/src/core/agents/index.ts";
 import {
   installPluginFiles,
   installSkillFiles,
   mergeMcpServersIntoFile,
   mergePluginsIntoFile
-} from "../src/core/merger/index.ts";
-import { extractPluginFiles, extractSkillFiles } from "../src/commands/install/index.ts";
-import { atomicWriteFileSync } from "../src/utils/fs.ts";
-import { isPrototypePollutionKey } from "../src/utils/security.ts";
+} from "../packages/core/src/core/merger/index.ts";
+import { extractPluginFiles, extractSkillFiles } from "../packages/cli/src/commands/install/index.ts";
+import { atomicWriteFileSync } from "../packages/core/src/utils/fs.ts";
+import { isPrototypePollutionKey } from "../packages/core/src/utils/security.ts";
 
 describe("Security & Hardening Test Suite", () => {
   let tmpDir: string;

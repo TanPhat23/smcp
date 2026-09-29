@@ -12,8 +12,8 @@ import {
   resetMcpAdapters,
   StandardMcpAdapter,
   unregisterMcpAdapter
-} from "../src/core/merger/index.ts";
-import type { McpAdapter, McpServerConfig } from "../src/types/index.ts";
+} from "../packages/core/src/core/merger/index.ts";
+import type { McpAdapter, McpServerConfig } from "../packages/core/src/types/index.ts";
 
 describe("Hardened MCP Adapters Subsystem", () => {
   let testDir: string;

@@ -10,7 +10,7 @@ import {
   parseGistId,
   parseGitHubRepo,
   setDefaultAxiosAdapter
-} from "../src/core/github.ts";
+} from "../packages/core/src/core/github.ts";
 
 describe("GitHubClient", () => {
   interface CapturedRequest {

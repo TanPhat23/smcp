@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { hashContent, hashObject, sortObjectDeep } from "../src/utils/crypto.ts";
-import { expandHome } from "../src/utils/paths.ts";
+import { hashContent, hashObject, sortObjectDeep } from "../packages/core/src/utils/crypto.ts";
+import { expandHome } from "../packages/core/src/utils/paths.ts";
 import os from "node:os";
 import path from "node:path";
 

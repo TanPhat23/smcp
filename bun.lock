@@ -3,11 +3,40 @@
   "workspaces": {
     "": {
       "name": "smcp",
-      "dependencies": {
+      "devDependencies": {
         "@clack/prompts": "^0.10.0",
+        "@types/bun": "latest",
+        "@types/node": "^22.13.0",
         "axios": "^1.20.0",
         "commander": "^13.1.0",
         "picocolors": "^1.1.1",
+        "typescript": "^5.7.3",
+      },
+    },
+    "packages/cli": {
+      "name": "smcp",
+      "version": "0.1.0",
+      "bin": {
+        "smcp": "./bin/smcp.js",
+      },
+      "dependencies": {
+        "@clack/prompts": "^0.10.0",
+        "@smcp/core": "workspace:*",
+        "commander": "^13.1.0",
+        "picocolors": "^1.1.1",
+        "zod": "^3.24.2",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "^22.13.0",
+        "typescript": "^5.7.3",
+      },
+    },
+    "packages/core": {
+      "name": "@smcp/core",
+      "version": "0.1.0",
+      "dependencies": {
+        "axios": "^1.20.0",
         "zod": "^3.24.2",
       },
       "devDependencies": {
@@ -21,6 +50,8 @@
     "@clack/core": ["@clack/core@0.4.2", "", { "dependencies": { "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-NYQfcEy8MWIxrT5Fj8nIVchfRFA26yYKJcvBS7WlUIlw2OmQOY9DhGGXMovyI5J5PpxrCPGkgUi207EBrjpBvg=="],
 
     "@clack/prompts": ["@clack/prompts@0.10.1", "", { "dependencies": { "@clack/core": "0.4.2", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-Q0T02vx8ZM9XSv9/Yde0jTmmBQufZhPJfYAg2XrrrxWWaZgq1rr8nU8Hv710BQ1dhoP8rtY7YUdpGej2Qza/cw=="],
+
+    "@smcp/core": ["@smcp/core@workspace:packages/core"],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
@@ -87,6 +118,8 @@
     "proxy-from-env": ["proxy-from-env@2.1.0", "", {}, "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA=="],
 
     "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
+
+    "smcp": ["smcp@workspace:packages/cli"],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

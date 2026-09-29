@@ -7,7 +7,7 @@ import {
   getOrCreateAxiosInstance,
   HttpClient,
   setDefaultHttpAdapter
-} from "../src/core/http.ts";
+} from "../packages/core/src/core/http.ts";
 
 describe("HttpClient (src/core/http.ts)", () => {
   let capturedConfig: any = null;

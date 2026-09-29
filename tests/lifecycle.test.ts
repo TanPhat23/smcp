@@ -18,7 +18,7 @@ import {
   type BeforeInstallContext,
   type BeforeShareContext,
   type ShareProvider
-} from "../src/index.ts";
+} from "../packages/cli/src/index.ts";
 
 describe("Lifecycle Hooks & Middleware Pipeline", () => {
   let testDir: string;

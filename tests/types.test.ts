@@ -9,7 +9,7 @@ import {
   RequiredEnvSchema,
   ShareHistorySchema,
   ShareRecordSchema
-} from "../src/types/index.ts";
+} from "../packages/core/src/types/index.ts";
 
 describe("Types and Schemas", () => {
   it("validates a valid smcp.json manifest", () => {

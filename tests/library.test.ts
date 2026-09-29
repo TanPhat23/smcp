@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import * as Core from "../src/core/index.ts";
-import * as Library from "../src/index.ts";
+import * as Core from "../packages/core/src/index.ts";
+import * as Library from "../packages/cli/src/index.ts";
 
 describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)", () => {
   describe("src/index.ts public exports", () => {

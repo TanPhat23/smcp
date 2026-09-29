@@ -4,10 +4,10 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createProgram } from "../src/cli.ts";
-import { inspectCommand } from "../src/commands/inspect.ts";
-import { GitHubClient } from "../src/core/github.ts";
-import type { Manifest } from "../src/types/index.ts";
+import { createProgram } from "../packages/cli/src/cli.ts";
+import { inspectCommand } from "../packages/cli/src/commands/inspect.ts";
+import { GitHubClient } from "../packages/core/src/core/github.ts";
+import type { Manifest } from "../packages/core/src/types/index.ts";
 
 describe("CLI Commander Wiring & Inspect Command", () => {
   let testDir: string;
@@ -262,9 +262,9 @@ describe("CLI Commander Wiring & Inspect Command", () => {
     });
 
     it("handles shareCommand with agents option filtering", async () => {
-      const { shareCommand } = await import("../src/commands/share/index.ts");
+      const { shareCommand } = await import("../packages/cli/src/commands/share/index.ts");
       let cancelMsg = "";
-      const spyCancel = spyOn(p, "cancel").mockImplementation((msg) => {
+      const spyCancel = spyOn(p, "cancel").mockImplementation((msg: any) => {
         cancelMsg = String(msg);
       });
 

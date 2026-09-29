@@ -16,8 +16,8 @@ import {
   resetStorageProvider,
   saveAuthConfig,
   type StorageProvider
-} from "../src/core/state/index.ts";
-import type { ShareRecord } from "../src/types/index.ts";
+} from "../packages/core/src/core/state/index.ts";
+import type { ShareRecord } from "../packages/core/src/types/index.ts";
 
 class MemoryStorageProvider implements StorageProvider {
   readonly name = "memory";

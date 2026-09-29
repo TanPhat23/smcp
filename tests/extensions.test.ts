@@ -12,7 +12,7 @@ import {
   resetMcpAdapters,
   resetPackLoaders,
   resetShareProviders
-} from "../src/index.ts";
+} from "../packages/cli/src/index.ts";
 
 describe("CLI Extension / Plugin Autoloader (src/core/extensions)", () => {
   let testDir: string;
@@ -81,7 +81,7 @@ describe("CLI Extension / Plugin Autoloader (src/core/extensions)", () => {
     fs.mkdirSync(globalPluginsDir, { recursive: true });
     const registryScript = path.join(globalPluginsDir, "register-custom.ts");
 
-    const indexPath = path.resolve(__dirname, "../src/index.ts");
+    const indexPath = path.resolve(__dirname, "../packages/cli/src/index.ts");
 
     fs.writeFileSync(
       registryScript,
@@ -232,7 +232,7 @@ registerAuthProvider({
   });
 
   it("respects --no-plugins and --no-extensions in CLI program", async () => {
-    const { createProgram } = await import("../src/cli.ts");
+    const { createProgram } = await import("../packages/cli/src/cli.ts");
     const program = createProgram();
 
     // Verify program has both options

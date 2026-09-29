@@ -1,58 +1,27 @@
 {
-  "name": "smcp",
+  "name": "smcp-monorepo",
   "version": "0.1.0",
-  "description": "CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations",
+  "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
-    "./core": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js",
-      "default": "./dist/core/index.js"
-    },
-    "./cli": "./dist/cli.js"
-  },
-  "bin": {
-    "smcp": "./bin/smcp.js"
-  },
-  "files": [
-    "bin",
-    "dist"
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "dev": "bun run src/cli.ts",
+    "dev": "bun run packages/cli/src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun build src/index.ts --target=node --outfile=dist/index.js && bun build src/core/index.ts --target=node --outfile=dist/core/index.js && tsc -p tsconfig.build.json",
+    "build:core": "cd packages/core && bun run build",
+    "build:cli": "cd packages/cli && bun run build",
+    "build": "bun run build:core && bun run build:cli",
     "prepublishOnly": "bun run build"
   },
-  "keywords": [
-    "mcp",
-    "agent-skills",
-    "opencode",
-    "claude-code",
-    "cursor",
-    "model-context-protocol",
-    "cli"
-  ],
-  "author": "ghug",
-  "license": "MIT",
-  "dependencies": {
+  "devDependencies": {
     "@clack/prompts": "^0.10.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.13.0",
     "axios": "^1.20.0",
     "commander": "^13.1.0",
     "picocolors": "^1.1.1",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^22.13.0",
     "typescript": "^5.7.3"
   }
 }

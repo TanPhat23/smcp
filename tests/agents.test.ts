@@ -16,9 +16,9 @@ import {
   stripJsonComments,
   unregisterAgentProfile,
   type DetectedAgent
-} from "../src/core/agents/index.ts";
-import { AgentProfileSchema, ManifestSchema, type AgentProfile, type Manifest } from "../src/types/index.ts";
-import { hashContent } from "../src/utils/crypto.ts";
+} from "../packages/core/src/core/agents/index.ts";
+import { AgentProfileSchema, ManifestSchema, type AgentProfile, type Manifest } from "../packages/core/src/types/index.ts";
+import { hashContent } from "../packages/core/src/utils/crypto.ts";
 
 describe("Agent Profiles Registry & Default Agents", () => {
   it("provides all default built-in profiles", () => {

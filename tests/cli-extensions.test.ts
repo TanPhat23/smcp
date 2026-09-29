@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { createProgram, runCli } from "../src/cli.ts";
+import { createProgram, runCli } from "../packages/cli/src/cli.ts";
 import {
   getCliCommandRegistrations,
   registerCliCommand,
   resetCliCommands
-} from "../src/index.ts";
-import * as ExtensionsModule from "../src/core/extensions/loader.ts";
+} from "../packages/cli/src/index.ts";
+import * as ExtensionsModule from "../packages/core/src/core/extensions/loader.ts";
 
 describe("CLI Plugin Command Extensibility (src/commands/cli-registry)", () => {
   beforeEach(() => {

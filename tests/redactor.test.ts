@@ -11,8 +11,8 @@ import {
   registerSecretValuePatterns,
   resetCustomSecretPatterns,
   urlContainsCredentials
-} from "../src/core/redactor/index.ts";
-import type { McpServerConfig } from "../src/types/index.ts";
+} from "../packages/core/src/core/redactor/index.ts";
+import type { McpServerConfig } from "../packages/core/src/types/index.ts";
 
 describe("Secret Redactor Engine", () => {
   it("replaces sensitive env vars with placeholders", () => {
