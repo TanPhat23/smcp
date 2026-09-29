@@ -62,9 +62,51 @@ smcp automatically loads user extensions and plugins from:
 - Local project config: \`./smcp.config.{js,mjs,cjs,ts}\`
 - Local project plugins: \`./.smcp/plugins/*.{js,mjs,cjs,ts}\`
 
-Extensions can register custom MCP adapters, pack loaders, share providers, and auth providers:
+Extensions can customize every subsystem in smcp:
 \`\`\`js
-import { registerPackLoader, registerShareProvider, registerAuthProvider } from "smcp";
+import {
+  registerPackLoader,
+  registerShareProvider,
+  registerAuthProvider,
+  registerMcpAdapter,
+  registerAgentProfile,
+  registerHook,
+  registerCliCommand,
+  registerStorageProvider
+} from "smcp";
+
+// 1. Custom Pack Loader (e.g. GitLab, S3, npm)
+registerPackLoader({
+  name: "gitlab",
+  matches: (ctx) => ctx.source.startsWith("gitlab:"),
+  load: async (ctx) => ({ manifest, rawFiles })
+});
+
+// 2. Custom Share Destination Provider
+registerShareProvider({
+  id: "internal-artifactory",
+  label: "Internal Artifactory",
+  publish: async (ctx) => { /* publish logic */ }
+});
+
+// 3. Custom In-Memory Agent Profile
+registerAgentProfile("zed", {
+  name: "Zed Editor",
+  mcpConfig: { paths: ["~/.config/zed/settings.json"], key: "context_servers" }
+});
+
+// 4. Lifecycle Hooks (beforeShare, afterShare, beforeInstall, afterInstall)
+registerHook("beforeShare", async (ctx) => {
+  // Run custom security audits, linting, or policy checks before sharing
+});
+
+// 5. Custom CLI Subcommands
+registerCliCommand((program) => {
+  program
+    .command("sync")
+    .description("Sync local MCP servers with team registry")
+    .action(async () => { /* custom logic */ });
+});
 \`\`\`
 
 To disable loading extensions:
