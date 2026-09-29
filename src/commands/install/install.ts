@@ -9,18 +9,12 @@ import {
   resolveActiveAgentPath
 } from "../../core/agents/index.ts";
 import { collectRequiredEnv, loadPackFromSource } from "../../core/pack/index.ts";
-import type { Manifest } from "../../types/index.ts";
+import { triggerHook } from "../../core/lifecycle/index.ts";
+import type { InstallCommandOptions, Manifest } from "../../types/index.ts";
 import { installPackIntoAgents } from "./agents.ts";
 import { resolveMcpServerTemplates } from "./templates.ts";
 
-export interface InstallCommandOptions {
-  agents?: string[];
-  force?: boolean;
-  env?: Record<string, string>;
-  pluginDir?: string;
-  json?: boolean;
-  yes?: boolean;
-}
+export type { InstallCommandOptions } from "../../types/index.ts";
 
 export async function installCommand(
   source: string,
@@ -258,7 +252,16 @@ export async function installCommand(
   }
 
   try {
-    installPackIntoAgents(
+    await triggerHook("beforeInstall", {
+      source,
+      manifest,
+      targetAgentIds,
+      resolvedServers,
+      options,
+      isAgentMode
+    });
+
+    const result = installPackIntoAgents(
       manifest,
       targetAgentIds,
       resolvedServers,
@@ -267,6 +270,17 @@ export async function installCommand(
       allProfiles,
       options?.pluginDir
     );
+
+    await triggerHook("afterInstall", {
+      source,
+      manifest,
+      targetAgentIds,
+      installedMcp: result.installedMcp,
+      installedSkills: result.installedSkills,
+      installedPlugins: result.installedPlugins,
+      options,
+      isAgentMode
+    });
 
     if (isAgentMode) {
       console.log(

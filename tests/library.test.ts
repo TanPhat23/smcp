@@ -107,6 +107,13 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       // Extensions Loader
       expect(typeof Library.loadUserExtensions).toBe("function");
 
+      // Lifecycle Hooks
+      expect(typeof Library.registerHook).toBe("function");
+      expect(typeof Library.on).toBe("function");
+      expect(typeof Library.unregisterHook).toBe("function");
+      expect(typeof Library.triggerHook).toBe("function");
+      expect(typeof Library.resetHooks).toBe("function");
+
       // Network Clients
       expect(Library.GitHubClient).toBeDefined();
       expect(Library.HttpClient).toBeDefined();
@@ -170,6 +177,13 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
 
       // Extensions
       expect(typeof Core.loadUserExtensions).toBe("function");
+
+      // Lifecycle Hooks
+      expect(typeof Core.registerHook).toBe("function");
+      expect(typeof Core.on).toBe("function");
+      expect(typeof Core.unregisterHook).toBe("function");
+      expect(typeof Core.triggerHook).toBe("function");
+      expect(typeof Core.resetHooks).toBe("function");
     });
 
     it("verifies src/core has ZERO terminal/CLI dependencies", async () => {

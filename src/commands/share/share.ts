@@ -11,6 +11,7 @@ import {
 } from "../../core/agents/index.ts";
 import { redactMcpServers } from "../../core/redactor/index.ts";
 import { getSharesHistory } from "../../core/state/index.ts";
+import { triggerHook } from "../../core/lifecycle/index.ts";
 import type {
   Manifest,
   McpServerConfig,
@@ -471,7 +472,29 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     return;
   }
 
-  await provider.publish({
+  try {
+    await triggerHook("beforeShare", {
+      manifest,
+      selectedServers,
+      selectedSkills,
+      selectedPlugins,
+      redactedServers,
+      requiredEnv,
+      options,
+      isAgentMode,
+      isNonInteractive
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isAgentMode) {
+      console.error(JSON.stringify({ success: false, error: message }));
+    } else {
+      p.cancel(message);
+    }
+    return;
+  }
+
+  const publishResult = await provider.publish({
     manifest,
     bundledSkills,
     bundledPlugins,
@@ -489,5 +512,14 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     targetGistId,
     targetRepoInput,
     targetLocalOutDir
+  });
+
+  await triggerHook("afterShare", {
+    manifest,
+    targetProvider,
+    result: publishResult,
+    options,
+    isAgentMode,
+    isNonInteractive
   });
 }

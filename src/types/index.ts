@@ -8,3 +8,4 @@ export * from "./agent.ts";
 export * from "./share.ts";
 export * from "./auth.ts";
 export * from "./redactor.ts";
+export * from "./install.ts";
