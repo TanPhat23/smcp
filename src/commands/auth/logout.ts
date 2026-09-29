@@ -1,8 +1,15 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { clearAuthConfig } from "../../core/state/index.ts";
+import { clearProviderAuth } from "../../core/state/index.ts";
 
-export function authLogoutCommand(): void {
-  clearAuthConfig();
-  p.outro(pc.green("✔ Logged out. Token removed from ~/.smcp/config.json"));
+export function authLogoutCommand(provider = "github"): void {
+  clearProviderAuth(provider);
+  const isGitHub = provider === "github";
+  p.outro(
+    pc.green(
+      isGitHub
+        ? "✔ Logged out. Token removed from ~/.smcp/config.json"
+        : `✔ Logged out from ${provider}. Token removed from ~/.smcp/config.json`
+    )
+  );
 }

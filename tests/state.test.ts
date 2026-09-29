@@ -105,7 +105,9 @@ describe("State Management (Local Config & History)", () => {
       const config = getAuthConfig();
       expect(config).toEqual({
         githubToken: "ghp_fileTokenABC",
-        githubUser: "octocat"
+        githubUser: "octocat",
+        tokens: {},
+        providers: {}
       });
     });
 

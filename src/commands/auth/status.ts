@@ -1,39 +1,57 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { GitHubClient } from "../../core/github.ts";
-import { getAuthConfig } from "../../core/state/index.ts";
+import { getAuthProvider } from "../../core/auth/index.ts";
+import { getAuthToken } from "../../core/state/index.ts";
 
-export async function authStatusCommand(): Promise<void> {
-  const config = getAuthConfig();
-  if (!config.githubToken) {
-    p.log.warn("Not logged in. Run: smcp auth login");
+export async function authStatusCommand(provider = "github"): Promise<void> {
+  const authProvider = getAuthProvider(provider);
+  if (!authProvider) {
+    p.log.error(`Unsupported auth provider: '${provider}'.`);
     return;
   }
+
+  const isGitHub = authProvider.id === "github";
+  const token = getAuthToken(provider);
+
+  if (!token) {
+    if (isGitHub) {
+      p.log.warn("Not logged in. Run: smcp auth login");
+    } else {
+      p.log.warn(`Not logged in. Run: smcp auth login ${authProvider.id}`);
+    }
+    return;
+  }
+
   const s = p.spinner();
   s.start("Checking token validity...");
   try {
-    const client = new GitHubClient(config.githubToken);
-    const user = await client.verifyUser();
-    s.stop(pc.green(`✔ Logged in as @${user.login}`));
+    const user = await authProvider.verify(token);
+    s.stop(pc.green(`✔ Logged in as @${user.username}`));
 
-    if (user.scopes && user.scopes.length > 0) {
-      const scopeList = user.scopes.join(", ");
-      const repoSupported = user.hasRepoScope
-        ? pc.green("✔ Repositories enabled")
-        : pc.yellow("✖ Missing 'repo' scope");
-      const gistSupported = user.hasGistScope
-        ? pc.green("✔ Gists enabled")
-        : pc.yellow("✖ Missing 'gist' scope");
-      p.log.info(`Token scopes: ${pc.cyan(scopeList)} (${gistSupported}, ${repoSupported})`);
+    if (isGitHub) {
+      const hasRepoScope = Boolean(user.metadata?.hasRepoScope);
+      const hasGistScope = Boolean(user.metadata?.hasGistScope);
+      if (user.scopes && user.scopes.length > 0) {
+        const scopeList = user.scopes.join(", ");
+        const repoSupported = hasRepoScope
+          ? pc.green("✔ Repositories enabled")
+          : pc.yellow("✖ Missing 'repo' scope");
+        const gistSupported = hasGistScope
+          ? pc.green("✔ Gists enabled")
+          : pc.yellow("✖ Missing 'gist' scope");
+        p.log.info(`Token scopes: ${pc.cyan(scopeList)} (${gistSupported}, ${repoSupported})`);
 
-      if (!user.hasRepoScope) {
-        p.log.message(
-          pc.dim(
-            "Tip: To share packs directly to GitHub Repositories, regenerate your token with 'repo' scope at:\n" +
-              "https://github.com/settings/tokens/new?scopes=gist,repo&description=smcp-cli"
-          )
-        );
+        if (!hasRepoScope) {
+          p.log.message(
+            pc.dim(
+              "Tip: To share packs directly to GitHub Repositories, regenerate your token with 'repo' scope at:\n" +
+                "https://github.com/settings/tokens/new?scopes=gist,repo&description=smcp-cli"
+            )
+          );
+        }
       }
+    } else if (user.scopes && user.scopes.length > 0) {
+      p.log.info(`Token scopes: ${pc.cyan(user.scopes.join(", "))}`);
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

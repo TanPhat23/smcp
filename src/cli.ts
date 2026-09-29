@@ -116,27 +116,27 @@ export function createProgram(): Command {
     });
 
   // Auth subcommands
-  const auth = program.command("auth").description("Manage GitHub authentication");
+  const auth = program.command("auth").description("Manage provider authentication (default: github)");
 
   auth
-    .command("login")
-    .description("Authenticate with GitHub using a Personal Access Token")
-    .action(async () => {
-      await authLoginCommand();
+    .command("login [provider]")
+    .description("Authenticate with an auth provider (default: github)")
+    .action(async (provider?: string) => {
+      await authLoginCommand(provider || "github");
     });
 
   auth
-    .command("logout")
-    .description("Clear stored GitHub authentication credentials")
-    .action(() => {
-      authLogoutCommand();
+    .command("logout [provider]")
+    .description("Clear stored authentication credentials for a provider (default: github)")
+    .action((provider?: string) => {
+      authLogoutCommand(provider || "github");
     });
 
   auth
-    .command("status")
-    .description("Show current GitHub authentication status")
-    .action(async () => {
-      await authStatusCommand();
+    .command("status [provider]")
+    .description("Show current authentication status for a provider (default: github)")
+    .action(async (provider?: string) => {
+      await authStatusCommand(provider || "github");
     });
 
   // Agent subcommands
