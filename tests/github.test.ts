@@ -1100,7 +1100,8 @@ describe("GitHubClient", () => {
               tree: [
                 { path: "packages/my-pack/smcp.json", type: "blob", sha: "blob_sub_manifest", url: "" },
                 { path: "packages/my-pack/skills/analyzer/SKILL.md", type: "blob", sha: "blob_sub_skill", url: "" },
-                { path: "packages/my-pack/plugins/tools/index.ts", type: "blob", sha: "blob_sub_plugin", url: "" }
+                { path: "packages/my-pack/plugins/tools/index.ts", type: "blob", sha: "blob_sub_plugin", url: "" },
+                { path: "other-packages/external/README.md", type: "blob", sha: "blob_other", url: "" }
               ]
             }
           };
@@ -1150,6 +1151,8 @@ describe("GitHubClient", () => {
       expect(result.rawFiles["skills_analyzer_SKILL.md"]).toBe("# Subpath Skill");
       expect(result.rawFiles["plugins/tools/index.ts"]).toBe("export const plugin = true;");
       expect(result.rawFiles["plugins_tools_index.ts"]).toBe("export const plugin = true;");
+      expect(result.rawFiles["README.md"]).toBeUndefined();
+      expect(result.rawFiles["other-packages/external/README.md"]).toBeUndefined();
     });
 
     it("fetchRepoPack throws error when smcp.json is missing or invalid in repository", async () => {

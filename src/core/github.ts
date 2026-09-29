@@ -696,6 +696,9 @@ export class GitHubClient {
       const blobItems = tree.filter((item) => item.type === "blob" && item.path !== manifestPath);
 
       const relevantBlobs = blobItems.filter((item) => {
+        if (prefix && !item.path.startsWith(prefix)) {
+          return false;
+        }
         const rel = prefix ? item.path.slice(prefix.length) : item.path;
         return (
           rel.startsWith("skills/") ||
