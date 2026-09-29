@@ -6,6 +6,7 @@ import {
   authLoginCommand,
   authLogoutCommand,
   authStatusCommand,
+  getCliCommandRegistrations,
   inspectCommand,
   installCommand,
   instructionsCommand,
@@ -35,8 +36,13 @@ function parseEnvOptions(rawEnv?: string[]): Record<string, string> {
   return result;
 }
 
-export function createProgram(): Command {
+export interface CreateProgramOptions {
+  extensionsLoaded?: boolean;
+}
+
+export function createProgram(options?: CreateProgramOptions): Command {
   const program = new Command();
+  let userExtensionsLoaded = Boolean(options?.extensionsLoaded);
 
   program
     .name("smcp")
@@ -46,6 +52,8 @@ export function createProgram(): Command {
     .option("--no-extensions", "Disable loading plugins and extensions");
 
   program.hook("preAction", async () => {
+    if (userExtensionsLoaded) return;
+    userExtensionsLoaded = true;
     const opts = program.opts();
     const disabled = opts.plugins === false || opts.extensions === false;
     await loadUserExtensions({ disabled });
@@ -175,11 +183,34 @@ export function createProgram(): Command {
       agentInstallSkillCommand(options);
     });
 
+  // Custom CLI commands registered by plugins
+  for (const factory of getCliCommandRegistrations()) {
+    try {
+      factory(program);
+    } catch (err) {
+      console.warn(
+        `Warning: Failed to register CLI extension command: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
+
   return program;
 }
 
 export async function runCli(args: string[] = process.argv): Promise<void> {
-  const program = createProgram();
+  const disabled =
+    args.includes("--no-plugins") ||
+    args.includes("--no-extensions") ||
+    process.env.SMCP_DISABLE_EXTENSIONS === "1" ||
+    process.env.SMCP_DISABLE_EXTENSIONS === "true";
+
+  if (!disabled) {
+    await loadUserExtensions();
+  }
+
+  const program = createProgram({ extensionsLoaded: true });
   await program.parseAsync(args);
 }
 

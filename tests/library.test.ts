@@ -132,6 +132,11 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       expect(typeof Library.agentListCommand).toBe("function");
       expect(typeof Library.agentAddCommand).toBe("function");
       expect(typeof Library.agentInstallSkillCommand).toBe("function");
+
+      // CLI command extensibility registry
+      expect(typeof Library.registerCliCommand).toBe("function");
+      expect(typeof Library.getCliCommandRegistrations).toBe("function");
+      expect(typeof Library.resetCliCommands).toBe("function");
     });
   });
 
@@ -191,6 +196,9 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       expect((Core as any).shareCommand).toBeUndefined();
       expect((Core as any).installCommand).toBeUndefined();
       expect((Core as any).createProgram).toBeUndefined();
+      expect((Core as any).registerCliCommand).toBeUndefined();
+      expect((Core as any).getCliCommandRegistrations).toBeUndefined();
+      expect((Core as any).resetCliCommands).toBeUndefined();
     });
   });
 });
