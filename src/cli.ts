@@ -56,7 +56,8 @@ export function createProgram(options?: CreateProgramOptions): Command {
     userExtensionsLoaded = true;
     const opts = program.opts();
     const disabled = opts.plugins === false || opts.extensions === false;
-    await loadUserExtensions({ disabled });
+    const isJson = Boolean(opts.json);
+    await loadUserExtensions({ disabled, json: isJson });
   });
 
   program
@@ -207,7 +208,8 @@ export async function runCli(args: string[] = process.argv): Promise<void> {
     process.env.SMCP_DISABLE_EXTENSIONS === "true";
 
   if (!disabled) {
-    await loadUserExtensions();
+    const isJson = args.includes("--json");
+    await loadUserExtensions({ json: isJson });
   }
 
   const program = createProgram({ extensionsLoaded: true });

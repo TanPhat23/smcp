@@ -92,7 +92,11 @@ export async function loadUserExtensions(
   // 2. Local directory config: ./smcp.config.js, ./smcp.config.mjs, ./smcp.config.cjs, ./smcp.config.ts
   const configNames = ["smcp.config.js", "smcp.config.mjs", "smcp.config.cjs", "smcp.config.ts"];
   for (const configName of configNames) {
-    addCandidate(path.resolve(cwd, configName));
+    const fullPath = path.resolve(cwd, configName);
+    if (fs.existsSync(fullPath)) {
+      addCandidate(fullPath);
+      break;
+    }
   }
 
   // 3. Local plugins directory: ./.smcp/plugins/

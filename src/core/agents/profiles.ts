@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AgentProfileSchema, type AgentProfile } from "../../types/index.ts";
+import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
 import { DEFAULT_AGENTS, deepFreeze } from "./defaults.ts";
@@ -111,5 +112,5 @@ export function saveCustomAgent(id: string, profile: AgentProfile, customAgentsP
   }
 
   current[trimmedId] = validatedProfile;
-  fs.writeFileSync(filePath, JSON.stringify(current, null, 2), "utf8");
+  atomicWriteFileSync(filePath, JSON.stringify(current, null, 2), { mode: 0o600 });
 }

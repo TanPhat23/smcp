@@ -24,6 +24,7 @@ import {
   clearProviderAuth,
   getAuthConfig,
   getAuthToken,
+  getStoredAuthConfig,
   saveAuthConfig,
   saveProviderAuth
 } from "../src/core/state/index.ts";
@@ -320,6 +321,28 @@ describe("Pluggable Auth Provider Strategy & Registry", () => {
       expect(config.providers?.custom?.username).toBe("custom-dev");
       expect(config.githubToken).toBe("ghp_existing");
       expect(config.githubUser).toBe("octo");
+    });
+
+    it("saveProviderAuth does not leak process.env.GITHUB_TOKEN into persistent storage", () => {
+      process.env.GITHUB_TOKEN = "transient_ci_token_12345";
+
+      saveProviderAuth("gitlab", "glpat_test_token", {
+        username: "gitlab-user"
+      });
+
+      // getStoredAuthConfig reads raw storage without process.env overrides
+      const stored = getStoredAuthConfig();
+      expect(stored.tokens?.gitlab).toBe("glpat_test_token");
+      expect(stored.providers?.gitlab?.username).toBe("gitlab-user");
+      expect(stored.githubToken).toBeUndefined();
+      expect(stored.githubUser).toBeUndefined();
+
+      // getAuthConfig() still reflects environment variable override at runtime
+      expect(getAuthConfig().githubToken).toBe("transient_ci_token_12345");
+
+      // Once env var is unset, stored config does not contain the transient token
+      delete process.env.GITHUB_TOKEN;
+      expect(getAuthConfig().githubToken).toBeUndefined();
     });
 
     it("clearProviderAuth deletes provider credentials and clears file if last token", () => {

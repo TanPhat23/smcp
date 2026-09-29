@@ -160,7 +160,11 @@ describe("Pluggable Storage Provider Strategy", () => {
         "/etc/passwd",
         "c:\\windows",
         "nested/../../secret",
-        "null\0byte"
+        "null\0byte",
+        "colon:key",
+        "star*key",
+        "question?key",
+        "pipe|key"
       ];
 
       for (const key of traversalKeys) {

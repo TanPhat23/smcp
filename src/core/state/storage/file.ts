@@ -13,14 +13,10 @@ export class FileStorageProvider implements StorageProvider {
       throw new Error("Invalid storage key: must be a non-empty string");
     }
 
+    const cleanKey = key.trim();
     if (
-      isPrototypePollutionKey(key) ||
-      key.includes("..") ||
-      key.includes("/") ||
-      key.includes("\\") ||
-      key.includes("\0") ||
-      path.isAbsolute(key) ||
-      key === "."
+      isPrototypePollutionKey(cleanKey) ||
+      !/^[a-zA-Z0-9_-]+$/.test(cleanKey)
     ) {
       throw new Error(`Invalid storage key: '${key}'`);
     }
@@ -28,12 +24,12 @@ export class FileStorageProvider implements StorageProvider {
     const smcpDir = getSmcpDir();
     let filePath: string;
 
-    if (key === "config") {
+    if (cleanKey === "config") {
       filePath = getConfigPath();
-    } else if (key === "shares") {
+    } else if (cleanKey === "shares") {
       filePath = getSharesPath();
     } else {
-      filePath = path.join(smcpDir, `${key}.json`);
+      filePath = path.join(smcpDir, `${cleanKey}.json`);
     }
 
     const rel = path.relative(smcpDir, filePath);

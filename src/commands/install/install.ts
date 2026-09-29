@@ -271,16 +271,25 @@ export async function installCommand(
       options?.pluginDir
     );
 
-    await triggerHook("afterInstall", {
-      source,
-      manifest,
-      targetAgentIds,
-      installedMcp: result.installedMcp,
-      installedSkills: result.installedSkills,
-      installedPlugins: result.installedPlugins,
-      options,
-      isAgentMode
-    });
+    try {
+      await triggerHook("afterInstall", {
+        source,
+        manifest,
+        targetAgentIds,
+        installedMcp: result.installedMcp,
+        installedSkills: result.installedSkills,
+        installedPlugins: result.installedPlugins,
+        options,
+        isAgentMode
+      });
+    } catch (hookErr: unknown) {
+      const msg = hookErr instanceof Error ? hookErr.message : String(hookErr);
+      if (!isAgentMode) {
+        p.log.warn(pc.yellow(`Warning: afterInstall hook encountered an error: ${msg}`));
+      } else {
+        console.warn(JSON.stringify({ warning: `afterInstall hook error: ${msg}` }));
+      }
+    }
 
     if (isAgentMode) {
       console.log(

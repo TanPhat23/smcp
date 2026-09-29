@@ -514,12 +514,21 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     targetLocalOutDir
   });
 
-  await triggerHook("afterShare", {
-    manifest,
-    targetProvider,
-    result: publishResult,
-    options,
-    isAgentMode,
-    isNonInteractive
-  });
+  try {
+    await triggerHook("afterShare", {
+      manifest,
+      targetProvider,
+      result: publishResult,
+      options,
+      isAgentMode,
+      isNonInteractive
+    });
+  } catch (hookErr: unknown) {
+    const msg = hookErr instanceof Error ? hookErr.message : String(hookErr);
+    if (!isAgentMode) {
+      p.log.warn(pc.yellow(`Warning: afterShare hook encountered an error: ${msg}`));
+    } else {
+      console.warn(JSON.stringify({ warning: `afterShare hook error: ${msg}` }));
+    }
+  }
 }

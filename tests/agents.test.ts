@@ -262,6 +262,19 @@ describe("Custom Agent Management", () => {
       } as unknown as AgentProfile)
     ).toThrow();
   });
+
+  it("saves custom agent with file mode 0o600", () => {
+    saveCustomAgent("perm-agent", {
+      name: "Perm Agent",
+      mcpConfig: null,
+      skills: null
+    });
+
+    const stat = fs.statSync(customAgentsFile);
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
+  });
 });
 
 describe("In-Memory Runtime Agent Profiles & Manifest Openness", () => {

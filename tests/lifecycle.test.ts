@@ -425,6 +425,67 @@ describe("Lifecycle Hooks & Middleware Pipeline", () => {
       expect(parsedLog.success).toBe(false);
       expect(parsedLog.error).toContain("Blocked by enterprise compliance policy");
     });
+
+    it("isolates errors thrown in afterShare hook as warnings without crashing", async () => {
+      const agentMcpPath = path.join(testDir, "agent-mcp-after.json");
+      fs.writeFileSync(
+        agentMcpPath,
+        JSON.stringify({
+          mcpServers: {
+            safeServer: { command: "node", args: ["server.js"] }
+          }
+        }),
+        "utf8"
+      );
+
+      saveCustomAgent("share-after-agent", {
+        name: "Share After Agent",
+        mcpConfig: { paths: [agentMcpPath], key: "mcpServers" },
+        skills: null
+      });
+
+      let published = false;
+      const testProvider: ShareProvider = {
+        id: "mock-after-share-provider",
+        label: "Mock After Share Provider",
+        publish: async () => {
+          published = true;
+          return true;
+        }
+      };
+      registerShareProvider(testProvider);
+
+      registerHook("afterShare", () => {
+        throw new Error("Telemetry reporting network timeout");
+      });
+
+      const warnLogs: string[] = [];
+      const origConsoleWarn = console.warn;
+      console.warn = (...args: any[]) => {
+        warnLogs.push(args.join(" "));
+      };
+
+      try {
+        await shareCommand({
+          provider: "mock-after-share-provider",
+          name: "after-share-pack",
+          servers: ["safeServer"],
+          skills: [],
+          plugins: [],
+          yes: true,
+          json: true
+        });
+      } finally {
+        console.warn = origConsoleWarn;
+      }
+
+      // Provider was successfully executed
+      expect(published).toBe(true);
+
+      // Warning was logged without crashing the process
+      expect(warnLogs.length).toBeGreaterThan(0);
+      expect(warnLogs[0]).toContain("Telemetry reporting network timeout");
+    });
   });
 
   describe("installCommand Lifecycle Integration", () => {
@@ -545,6 +606,69 @@ describe("Lifecycle Hooks & Middleware Pipeline", () => {
       const parsedLog = JSON.parse(errorLogs[0]);
       expect(parsedLog.success).toBe(false);
       expect(parsedLog.error).toContain("Malicious MCP server detected");
+    });
+
+    it("isolates errors thrown in afterInstall hook as warnings without failing installation", async () => {
+      const packDir = path.join(testDir, "after-install-pack");
+      fs.mkdirSync(packDir, { recursive: true });
+      const manifest = {
+        name: "after-install-pack",
+        version: "1.0.0",
+        mcpServers: {
+          installedServer: { command: "node", args: ["srv.js"] }
+        },
+        skills: []
+      };
+      fs.writeFileSync(path.join(packDir, "smcp.json"), JSON.stringify(manifest, null, 2), "utf8");
+
+      const targetMcpFile = path.join(testDir, "target-after-mcp.json");
+      fs.writeFileSync(targetMcpFile, JSON.stringify({ mcpServers: {} }), "utf8");
+      saveCustomAgent("lifecycle-after-agent", {
+        name: "Lifecycle After Agent",
+        mcpConfig: { paths: [targetMcpFile], key: "mcpServers" },
+        skills: null
+      });
+
+      registerHook("afterInstall", () => {
+        throw new Error("Post-install notification service down");
+      });
+
+      const warnLogs: string[] = [];
+      const infoLogs: string[] = [];
+      const origConsoleWarn = console.warn;
+      const origConsoleLog = console.log;
+      console.warn = (...args: any[]) => {
+        warnLogs.push(args.join(" "));
+      };
+      console.log = (...args: any[]) => {
+        infoLogs.push(args.join(" "));
+      };
+
+      try {
+        await installCommand(packDir, {
+          agents: ["lifecycle-after-agent"],
+          force: true,
+          yes: true,
+          json: true
+        });
+      } finally {
+        console.warn = origConsoleWarn;
+        console.log = origConsoleLog;
+      }
+
+      // Verify files WERE installed
+      const configAfter = JSON.parse(fs.readFileSync(targetMcpFile, "utf8"));
+      expect(configAfter.mcpServers.installedServer).toBeDefined();
+
+      // Warning was captured
+      expect(warnLogs.length).toBeGreaterThan(0);
+      expect(warnLogs[0]).toContain("Post-install notification service down");
+
+      // Success output was still logged
+      expect(infoLogs.length).toBeGreaterThan(0);
+      const parsedLog = JSON.parse(infoLogs[0]);
+      expect(parsedLog.success).toBe(true);
+      expect(parsedLog.pack).toBe("after-install-pack");
     });
   });
 });

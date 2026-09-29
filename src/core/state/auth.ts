@@ -4,7 +4,7 @@ import { getAuthProvider } from "../auth/registry.ts";
 import type { AuthUser } from "../auth/types.ts";
 import { getStorageProvider } from "./storage/index.ts";
 
-export function getAuthConfig(): AuthConfig {
+export function getStoredAuthConfig(): AuthConfig {
   let saved: AuthConfig = {};
 
   try {
@@ -19,6 +19,12 @@ export function getAuthConfig(): AuthConfig {
   } catch {
     saved = {};
   }
+
+  return saved;
+}
+
+export function getAuthConfig(): AuthConfig {
+  const saved = getStoredAuthConfig();
 
   if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim().length > 0) {
     return {
@@ -89,7 +95,7 @@ export function saveProviderAuth(
   }
 
   const cleanProvider = provider.trim().toLowerCase();
-  const config = getAuthConfig();
+  const config = getStoredAuthConfig();
   const tokens = { ...(config.tokens || {}) };
   const providers = { ...(config.providers || {}) };
 
@@ -123,7 +129,7 @@ export function clearProviderAuth(provider = "github"): void {
   }
 
   const cleanProvider = provider.trim().toLowerCase();
-  const config = getAuthConfig();
+  const config = getStoredAuthConfig();
   const tokens = { ...(config.tokens || {}) };
   const providers = { ...(config.providers || {}) };
 

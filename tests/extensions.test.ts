@@ -219,6 +219,18 @@ registerAuthProvider({
     expect(loaded).toEqual([]);
   });
 
+  it("stops at the first matching local config file in priority order", async () => {
+    const jsConfig = path.join(testCwd, "smcp.config.js");
+    const tsConfig = path.join(testCwd, "smcp.config.ts");
+    fs.writeFileSync(jsConfig, "// js config\n", "utf8");
+    fs.writeFileSync(tsConfig, "// ts config\n", "utf8");
+
+    const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir });
+    expect(loaded.length).toBe(1);
+    expect(loaded[0]).toBe(jsConfig);
+    expect(loaded.includes(tsConfig)).toBe(false);
+  });
+
   it("respects --no-plugins and --no-extensions in CLI program", async () => {
     const { createProgram } = await import("../src/cli.ts");
     const program = createProgram();
