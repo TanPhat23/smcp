@@ -12,6 +12,7 @@ import {
   listCommand,
   shareCommand
 } from "./commands/index.ts";
+import { loadUserExtensions } from "./core/extensions/index.ts";
 import { isPrototypePollutionKey } from "./utils/security.ts";
 
 function parseEnvOptions(rawEnv?: string[]): Record<string, string> {
@@ -40,7 +41,15 @@ export function createProgram(): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.1.0");
+    .version("0.1.0")
+    .option("--no-plugins", "Disable loading plugins and extensions")
+    .option("--no-extensions", "Disable loading plugins and extensions");
+
+  program.hook("preAction", async () => {
+    const opts = program.opts();
+    const disabled = opts.plugins === false || opts.extensions === false;
+    await loadUserExtensions({ disabled });
+  });
 
   program
     .command("share")
@@ -169,9 +178,9 @@ export function createProgram(): Command {
   return program;
 }
 
-export function runCli(args: string[] = process.argv): void {
+export async function runCli(args: string[] = process.argv): Promise<void> {
   const program = createProgram();
-  program.parse(args);
+  await program.parseAsync(args);
 }
 
 const isDirectRun =

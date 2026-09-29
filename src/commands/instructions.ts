@@ -55,6 +55,21 @@ smcp share -o ./my-pack -a opencode -y --json
 # Export specific servers, skills, and plugins:
 smcp share -o ./my-pack -s context7 -k subagent-orchestration -p opencode-gemini-auth@latest -y --json
 \`\`\`
+
+### 5. Extensibility & Plugins Autoloader
+smcp automatically loads user extensions and plugins from:
+- Global plugins: \`~/.smcp/plugins/*.{js,mjs,cjs,ts}\`
+- Local project config: \`./smcp.config.{js,mjs,cjs,ts}\`
+- Local project plugins: \`./.smcp/plugins/*.{js,mjs,cjs,ts}\`
+
+Extensions can register custom MCP adapters, pack loaders, share providers, and auth providers:
+\`\`\`js
+import { registerPackLoader, registerShareProvider, registerAuthProvider } from "smcp";
+\`\`\`
+
+To disable loading extensions:
+- CLI flags: \`--no-plugins\` or \`--no-extensions\`
+- Environment variable: \`SMCP_DISABLE_EXTENSIONS=1\`
 `;
 
 export function instructionsCommand(options?: { json?: boolean }): void {

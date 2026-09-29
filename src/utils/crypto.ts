@@ -4,6 +4,8 @@ export function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+export const sha256 = hashContent;
+
 export function sortObjectDeep(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") {
     return obj;

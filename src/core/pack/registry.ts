@@ -153,6 +153,16 @@ export function getAllPackLoaders(): readonly PackLoader[] {
 }
 
 /**
+ * Retrieves an active PackLoader by name.
+ */
+export function getPackLoader(name: string): PackLoader | undefined {
+  if (!name || typeof name !== "string" || isPrototypePollutionKey(name)) {
+    return undefined;
+  }
+  return activeLoaders.find((l) => l.name === name.trim());
+}
+
+/**
  * Resets all active PackLoaders to default built-ins.
  */
 export function resetPackLoaders(): void {

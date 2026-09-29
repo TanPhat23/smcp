@@ -3,7 +3,21 @@
   "version": "0.1.0",
   "description": "CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations",
   "type": "module",
-  "main": "dist/cli.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "default": "./dist/core/index.js"
+    },
+    "./cli": "./dist/cli.js"
+  },
   "bin": {
     "smcp": "./bin/smcp.js"
   },
@@ -15,7 +29,7 @@
     "dev": "bun run src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js",
+    "build": "bun build src/cli.ts --target=node --outfile=dist/cli.js && bun build src/index.ts --target=node --outfile=dist/index.js && bun build src/core/index.ts --target=node --outfile=dist/core/index.js && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build"
   },
   "keywords": [

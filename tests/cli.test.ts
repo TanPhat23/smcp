@@ -34,6 +34,13 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(program.description()).toContain("AI Agent Skills and MCP");
     });
 
+    it("configures --no-plugins and --no-extensions root options", () => {
+      const program = createProgram();
+      const options = program.options.map((o) => o.flags);
+      expect(options.some((f) => f.includes("--no-plugins"))).toBe(true);
+      expect(options.some((f) => f.includes("--no-extensions"))).toBe(true);
+    });
+
     it("wires up share command with export alias and options", () => {
       const program = createProgram();
       const shareCmd = program.commands.find((c) => c.name() === "share");
