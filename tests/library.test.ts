@@ -97,6 +97,10 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       expect(typeof Library.clearProviderAuth).toBe("function");
       expect(typeof Library.getSharesHistory).toBe("function");
       expect(typeof Library.recordShare).toBe("function");
+      expect(Library.FileStorageProvider).toBeDefined();
+      expect(typeof Library.registerStorageProvider).toBe("function");
+      expect(typeof Library.getStorageProvider).toBe("function");
+      expect(typeof Library.resetStorageProvider).toBe("function");
 
       // Merger & Installer
       expect(typeof Library.mergeMcpServersIntoFile).toBe("function");
@@ -171,6 +175,10 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       expect(typeof Core.getAuthConfig).toBe("function");
       expect(typeof Core.saveProviderAuth).toBe("function");
       expect(typeof Core.getSharesHistory).toBe("function");
+      expect(Core.FileStorageProvider).toBeDefined();
+      expect(typeof Core.registerStorageProvider).toBe("function");
+      expect(typeof Core.getStorageProvider).toBe("function");
+      expect(typeof Core.resetStorageProvider).toBe("function");
 
       // Merger
       expect(typeof Core.mergeMcpServersIntoFile).toBe("function");

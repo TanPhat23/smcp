@@ -1,23 +1,17 @@
-import fs from "node:fs";
 import {
   ShareHistorySchema,
   ShareRecordSchema,
   type ShareHistory,
   type ShareRecord
 } from "../../types/index.ts";
-import { atomicWriteFileSync } from "../../utils/fs.ts";
-import { ensureSmcpDir, getSharesPath } from "./paths.ts";
+import { getStorageProvider } from "./storage/index.ts";
 
 export function getSharesHistory(): ShareHistory {
-  ensureSmcpDir();
-  const sharesFile = getSharesPath();
-
-  if (!fs.existsSync(sharesFile)) {
-    return { shares: [] };
-  }
-
   try {
-    const raw = fs.readFileSync(sharesFile, "utf8");
+    const raw = getStorageProvider().getItem("shares");
+    if (!raw) {
+      return { shares: [] };
+    }
     const parsed = JSON.parse(raw);
     const validated = ShareHistorySchema.safeParse(parsed);
     if (validated.success) {
@@ -31,7 +25,6 @@ export function getSharesHistory(): ShareHistory {
 
 export function recordShare(record: ShareRecord): void {
   const validatedRecord = ShareRecordSchema.parse(record);
-  ensureSmcpDir();
 
   const history = getSharesHistory();
   const index = history.shares.findIndex((s) => s.name === validatedRecord.name);
@@ -43,6 +36,5 @@ export function recordShare(record: ShareRecord): void {
   }
 
   const validatedHistory = ShareHistorySchema.parse(history);
-  const sharesFile = getSharesPath();
-  atomicWriteFileSync(sharesFile, JSON.stringify(validatedHistory, null, 2));
+  getStorageProvider().setItem("shares", JSON.stringify(validatedHistory, null, 2));
 }
