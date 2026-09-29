@@ -1,6 +1,6 @@
 import type { AgentProfile } from "../../types/index.ts";
 
-function deepFreeze<T>(obj: T): T {
+export function deepFreeze<T>(obj: T): T {
   if (obj === null || typeof obj !== "object") {
     return obj;
   }

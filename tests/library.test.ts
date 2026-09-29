@@ -76,6 +76,9 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       // Agent detection & profiles
       expect(typeof Library.getAgentProfiles).toBe("function");
       expect(typeof Library.saveCustomAgent).toBe("function");
+      expect(typeof Library.registerAgentProfile).toBe("function");
+      expect(typeof Library.unregisterAgentProfile).toBe("function");
+      expect(typeof Library.resetAgentProfiles).toBe("function");
       expect(typeof Library.detectAgents).toBe("function");
       expect(typeof Library.readInstalledMcpServers).toBe("function");
       expect(typeof Library.readInstalledPlugins).toBe("function");
@@ -147,6 +150,9 @@ describe("Programmatic Library SDK Entrypoint (src/index.ts & src/core/index.ts)
       // Agents
       expect(typeof Core.detectAgents).toBe("function");
       expect(typeof Core.getAgentProfiles).toBe("function");
+      expect(typeof Core.registerAgentProfile).toBe("function");
+      expect(typeof Core.unregisterAgentProfile).toBe("function");
+      expect(typeof Core.resetAgentProfiles).toBe("function");
 
       // State
       expect(typeof Core.getSmcpDir).toBe("function");

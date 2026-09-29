@@ -9,12 +9,15 @@ import {
   getAgentProfiles,
   readInstalledMcpServers,
   readInstalledPlugins,
+  registerAgentProfile,
+  resetAgentProfiles,
   saveCustomAgent,
   scanSkills,
   stripJsonComments,
+  unregisterAgentProfile,
   type DetectedAgent
 } from "../src/core/agents/index.ts";
-import { AgentProfileSchema, type AgentProfile } from "../src/types/index.ts";
+import { AgentProfileSchema, ManifestSchema, type AgentProfile, type Manifest } from "../src/types/index.ts";
 import { hashContent } from "../src/utils/crypto.ts";
 
 describe("Agent Profiles Registry & Default Agents", () => {
@@ -114,6 +117,7 @@ describe("Custom Agent Management", () => {
   const customAgentsFile = path.join(testDir, "custom-agents.json");
 
   beforeEach(() => {
+    resetAgentProfiles();
     process.env.SMCP_CUSTOM_AGENTS_PATH = customAgentsFile;
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
@@ -121,6 +125,7 @@ describe("Custom Agent Management", () => {
   });
 
   afterAll(() => {
+    resetAgentProfiles();
     delete process.env.SMCP_CUSTOM_AGENTS_PATH;
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
@@ -256,6 +261,204 @@ describe("Custom Agent Management", () => {
         mcpConfig: { paths: "not-an-array" }
       } as unknown as AgentProfile)
     ).toThrow();
+  });
+});
+
+describe("In-Memory Runtime Agent Profiles & Manifest Openness", () => {
+  beforeEach(() => {
+    resetAgentProfiles();
+  });
+
+  afterAll(() => {
+    resetAgentProfiles();
+  });
+
+  it("registers an in-memory agent profile and includes it in getAgentProfiles()", () => {
+    const runtimeProfile: AgentProfile = {
+      name: "Runtime Agent",
+      mcpConfig: {
+        paths: ["/tmp/runtime-agent/mcp.json"],
+        key: "mcpServers"
+      },
+      skills: {
+        paths: ["/tmp/runtime-agent/skills"]
+      }
+    };
+
+    registerAgentProfile("runtime-agent", runtimeProfile);
+
+    const profiles = getAgentProfiles();
+    expect(profiles["runtime-agent"]).toBeDefined();
+    expect(profiles["runtime-agent"].name).toBe("Runtime Agent");
+    expect(profiles["runtime-agent"].mcpConfig?.paths).toEqual(["/tmp/runtime-agent/mcp.json"]);
+
+    // Immutability: Mutating original profile object does not affect registry
+    (runtimeProfile.mcpConfig?.paths as string[]).push("/tmp/hacked.json");
+    expect(getAgentProfiles()["runtime-agent"].mcpConfig?.paths).toEqual(["/tmp/runtime-agent/mcp.json"]);
+
+    // Immutability: Mutating returned profile object does not affect registry
+    profiles["runtime-agent"].name = "Mutated Local Name";
+    expect(getAgentProfiles()["runtime-agent"].name).toBe("Runtime Agent");
+  });
+
+  it("overrides a default agent profile with an in-memory agent profile (highest precedence)", () => {
+    expect(DEFAULT_AGENTS.opencode.name).toBe("OpenCode");
+
+    const customOpenCode: AgentProfile = {
+      name: "Custom OpenCode In-Memory",
+      mcpConfig: {
+        paths: ["~/.opencode-override/mcp.json"],
+        key: "mcp"
+      },
+      skills: null
+    };
+
+    registerAgentProfile("opencode", customOpenCode);
+
+    const profiles = getAgentProfiles();
+    expect(profiles.opencode).toBeDefined();
+    expect(profiles.opencode.name).toBe("Custom OpenCode In-Memory");
+    expect(profiles.opencode.mcpConfig?.key).toBe("mcp");
+
+    // Other default profiles remain intact
+    expect(profiles.cursor).toBeDefined();
+    expect(profiles.cursor.name).toBe("Cursor");
+    expect(DEFAULT_AGENTS.opencode.name).toBe("OpenCode");
+  });
+
+  it("overrides a disk custom agent with an in-memory agent profile", () => {
+    const testDir = path.join(os.tmpdir(), "smcp-inmem-precedence-" + Date.now());
+    const customPath = path.join(testDir, "custom-agents.json");
+
+    try {
+      saveCustomAgent(
+        "hybrid-agent",
+        {
+          name: "Disk Version",
+          mcpConfig: null,
+          skills: null
+        },
+        customPath
+      );
+
+      const diskProfiles = getAgentProfiles(customPath);
+      expect(diskProfiles["hybrid-agent"].name).toBe("Disk Version");
+
+      registerAgentProfile("hybrid-agent", {
+        name: "In-Memory Version",
+        mcpConfig: null,
+        skills: null
+      });
+
+      const mergedProfiles = getAgentProfiles(customPath);
+      expect(mergedProfiles["hybrid-agent"].name).toBe("In-Memory Version");
+    } finally {
+      if (fs.existsSync(testDir)) {
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("unregisters an in-memory agent profile and restores default or disk agent", () => {
+    registerAgentProfile("opencode", {
+      name: "Temporary OpenCode",
+      mcpConfig: null,
+      skills: null
+    });
+    expect(getAgentProfiles().opencode.name).toBe("Temporary OpenCode");
+
+    unregisterAgentProfile("opencode");
+    expect(getAgentProfiles().opencode.name).toBe("OpenCode");
+
+    registerAgentProfile("ephemeral-agent", {
+      name: "Ephemeral",
+      mcpConfig: null,
+      skills: null
+    });
+    expect(getAgentProfiles()["ephemeral-agent"]).toBeDefined();
+
+    unregisterAgentProfile("ephemeral-agent");
+    expect(getAgentProfiles()["ephemeral-agent"]).toBeUndefined();
+
+    // Calling unregister on non-existent or prototype pollution key does not throw
+    expect(() => unregisterAgentProfile("non-existent")).not.toThrow();
+    expect(() => unregisterAgentProfile("__proto__")).not.toThrow();
+    expect(() => unregisterAgentProfile("constructor")).not.toThrow();
+    expect(() => unregisterAgentProfile("prototype")).not.toThrow();
+  });
+
+  it("resets all in-memory agent profiles via resetAgentProfiles()", () => {
+    registerAgentProfile("agent-one", { name: "Agent 1", mcpConfig: null, skills: null });
+    registerAgentProfile("agent-two", { name: "Agent 2", mcpConfig: null, skills: null });
+    registerAgentProfile("windsurf", { name: "Windsurf Overridden", mcpConfig: null, skills: null });
+
+    let profiles = getAgentProfiles();
+    expect(profiles["agent-one"]).toBeDefined();
+    expect(profiles["agent-two"]).toBeDefined();
+    expect(profiles.windsurf.name).toBe("Windsurf Overridden");
+
+    resetAgentProfiles();
+
+    profiles = getAgentProfiles();
+    expect(profiles["agent-one"]).toBeUndefined();
+    expect(profiles["agent-two"]).toBeUndefined();
+    expect(profiles.windsurf.name).toBe("Windsurf");
+  });
+
+  it("validates agent ID and rejects prototype pollution keys", () => {
+    const validProfile: AgentProfile = {
+      name: "Test Agent",
+      mcpConfig: null,
+      skills: null
+    };
+
+    expect(() => registerAgentProfile("__proto__", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("constructor", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("prototype", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("   ", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("invalid spaces", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile("invalid@char!", validProfile)).toThrow(/Invalid agent ID/);
+    expect(() => registerAgentProfile(123 as unknown as string, validProfile)).toThrow(/Invalid agent ID/);
+
+    expect(() =>
+      registerAgentProfile("valid-agent", { name: 123 } as unknown as AgentProfile)
+    ).toThrow();
+  });
+
+  it("preserves arbitrary keys on ManifestSchema due to .passthrough()", () => {
+    const customManifest = {
+      name: "extensible-pack",
+      version: "1.0.0",
+      description: "Pack with arbitrary metadata",
+      customMetadata: {
+        packAuthorId: "auth_12345",
+        features: ["ai", "mcp"]
+      },
+      tags: ["extensible", "community"],
+      experimentalFlag: true,
+      arbitraryNumber: 42
+    };
+
+    const parsed = ManifestSchema.parse(customManifest);
+
+    expect(parsed.name).toBe("extensible-pack");
+    expect(parsed.version).toBe("1.0.0");
+    expect(parsed.customMetadata).toEqual({
+      packAuthorId: "auth_12345",
+      features: ["ai", "mcp"]
+    });
+    expect(parsed.tags).toEqual(["extensible", "community"]);
+    expect(parsed.experimentalFlag).toBe(true);
+    expect(parsed.arbitraryNumber).toBe(42);
+
+    // Verify Manifest interface typing accepts arbitrary keys
+    const manifestTyped: Manifest = parsed;
+    expect(manifestTyped["customMetadata"]).toEqual({
+      packAuthorId: "auth_12345",
+      features: ["ai", "mcp"]
+    });
+    expect(manifestTyped["experimentalFlag"]).toBe(true);
   });
 });
 

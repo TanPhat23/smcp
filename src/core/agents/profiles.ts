@@ -4,7 +4,42 @@ import path from "node:path";
 import { AgentProfileSchema, type AgentProfile } from "../../types/index.ts";
 import { expandHome } from "../../utils/paths.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
-import { DEFAULT_AGENTS } from "./defaults.ts";
+import { DEFAULT_AGENTS, deepFreeze } from "./defaults.ts";
+
+let inMemoryAgents: Record<string, AgentProfile> = {};
+
+function validateAgentId(id: unknown): string {
+  if (typeof id !== "string") {
+    throw new Error("Invalid agent ID: must be a string");
+  }
+  const trimmedId = id.trim();
+  if (
+    !trimmedId ||
+    isPrototypePollutionKey(trimmedId) ||
+    !/^[a-zA-Z0-9_-]+$/.test(trimmedId)
+  ) {
+    throw new Error(`Invalid agent ID: ${id}`);
+  }
+  return trimmedId;
+}
+
+export function registerAgentProfile(id: string, profile: AgentProfile): void {
+  const cleanId = validateAgentId(id);
+  const validatedProfile = AgentProfileSchema.parse(profile);
+  inMemoryAgents[cleanId] = deepFreeze(structuredClone(validatedProfile));
+}
+
+export function unregisterAgentProfile(id: string): void {
+  if (typeof id !== "string" || isPrototypePollutionKey(id)) {
+    return;
+  }
+  const cleanId = id.trim();
+  delete inMemoryAgents[cleanId];
+}
+
+export function resetAgentProfiles(): void {
+  inMemoryAgents = {};
+}
 
 function getCustomAgentsPath(): string {
   if (process.env.SMCP_CUSTOM_AGENTS_PATH) {
@@ -38,22 +73,16 @@ export function getAgentProfiles(customAgentsPath?: string): Record<string, Agen
     }
   }
 
+  for (const [key, value] of Object.entries(inMemoryAgents)) {
+    if (isPrototypePollutionKey(key)) continue;
+    profiles[key] = structuredClone(value);
+  }
+
   return profiles;
 }
 
 export function saveCustomAgent(id: string, profile: AgentProfile, customAgentsPath?: string): void {
-  if (typeof id !== "string") {
-    throw new Error("Invalid agent ID: must be a string");
-  }
-  const trimmedId = id.trim();
-  if (
-    !trimmedId ||
-    isPrototypePollutionKey(trimmedId) ||
-    !/^[a-zA-Z0-9_-]+$/.test(trimmedId)
-  ) {
-    throw new Error(`Invalid agent ID: ${id}`);
-  }
-
+  const trimmedId = validateAgentId(id);
   const validatedProfile = AgentProfileSchema.parse(profile);
 
   const filePath = customAgentsPath ? expandHome(customAgentsPath) : getCustomAgentsPath();
