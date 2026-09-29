@@ -3,21 +3,32 @@ import * as p from "@clack/prompts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { agentAddCommand, agentListCommand } from "../src/commands/agent.ts";
-import { authLoginCommand, authLogoutCommand, authStatusCommand } from "../src/commands/auth.ts";
 import {
+  agentAddCommand,
+  agentInstallSkillCommand,
+  agentListCommand
+} from "../src/commands/agent/index.ts";
+import { instructionsCommand } from "../src/commands/instructions.ts";
+import { authLoginCommand, authLogoutCommand, authStatusCommand } from "../src/commands/auth/index.ts";
+import {
+  extractPluginFiles,
   extractSkillFiles,
   installCommand,
   installPackIntoAgents,
   resolveActiveAgentPath,
   resolveMcpServerTemplates
-} from "../src/commands/install.ts";
+} from "../src/commands/install/index.ts";
 import { listCommand } from "../src/commands/list.ts";
-import { bundleSkillFiles, exportPackLocally, shareCommand } from "../src/commands/share.ts";
-import { getAgentProfiles, saveCustomAgent } from "../src/core/agents.ts";
+import {
+  bundlePluginFiles,
+  bundleSkillFiles,
+  exportPackLocally,
+  shareCommand
+} from "../src/commands/share/index.ts";
+import { getAgentProfiles, saveCustomAgent } from "../src/core/agents/index.ts";
 import { GitHubClient } from "../src/core/github.ts";
-import { clearAuthConfig, getAuthConfig, getSharesHistory, saveAuthConfig } from "../src/core/state.ts";
-import type { AgentProfile, Manifest, McpServerConfig, SkillEntry } from "../src/types.ts";
+import { clearAuthConfig, getAuthConfig, getSharesHistory, recordShare, saveAuthConfig } from "../src/core/state/index.ts";
+import type { AgentProfile, Manifest, McpServerConfig, PluginEntry, SkillEntry } from "../src/types/index.ts";
 
 describe("Commands Implementation", () => {
   let testDir: string;
@@ -50,6 +61,8 @@ describe("Commands Implementation", () => {
     } else {
       delete process.env.GITHUB_TOKEN;
     }
+
+    delete process.env.SMCP_CUSTOM_AGENTS_PATH;
 
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
@@ -93,6 +106,67 @@ describe("Commands Implementation", () => {
         await authStatusCommand();
       } finally {
         GitHubClient.prototype.verifyUser = origVerify;
+      }
+    });
+
+    it("authStatusCommand reports scopes and confirms repositories are enabled when repo scope is present", async () => {
+      saveAuthConfig({ githubToken: "ghp_valid_token", githubUser: "octocat" });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["gist", "repo"],
+        hasRepoScope: true,
+        hasGistScope: true
+      });
+
+      let loggedInfo = "";
+      const infoSpy = spyOn(p.log, "info").mockImplementation((msg?: string) => {
+        loggedInfo = msg || "";
+      });
+
+      try {
+        await authStatusCommand();
+        expect(loggedInfo).toContain("gist, repo");
+        expect(loggedInfo).toContain("Repositories enabled");
+        expect(loggedInfo).toContain("Gists enabled");
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        infoSpy.mockRestore();
+      }
+    });
+
+    it("authStatusCommand reports warning and regeneration tip when user token lacks repo scope", async () => {
+      saveAuthConfig({ githubToken: "ghp_valid_token", githubUser: "octocat" });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["gist"],
+        hasRepoScope: false,
+        hasGistScope: true
+      });
+
+      let loggedInfo = "";
+      let loggedMessage = "";
+      const infoSpy = spyOn(p.log, "info").mockImplementation((msg?: string) => {
+        loggedInfo = msg || "";
+      });
+      const messageSpy = spyOn(p.log, "message").mockImplementation((msg?: string) => {
+        loggedMessage = msg || "";
+      });
+
+      try {
+        await authStatusCommand();
+        expect(loggedInfo).toContain("Missing 'repo' scope");
+        expect(loggedMessage).toContain("Tip: To share packs directly to GitHub Repositories");
+        expect(loggedMessage).toContain("https://github.com/settings/tokens/new?scopes=gist,repo");
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        infoSpy.mockRestore();
+        messageSpy.mockRestore();
       }
     });
 
@@ -168,7 +242,9 @@ describe("Commands Implementation", () => {
         "custom-test-agent", // id
         "Custom Test Agent", // name
         "~/.custom/mcp.json", // mcpPath
-        "~/.custom/skills" // skillsPath
+        "~/.custom/skills", // skillsPath
+        "~/.custom/opencode.jsonc", // pluginsPath
+        "~/.custom/plugin" // pluginsDir
       ];
 
       const textSpy = spyOn(p, "text").mockImplementation((async () => answers[promptIndex++]) as any);
@@ -181,9 +257,25 @@ describe("Commands Implementation", () => {
         expect(profiles["custom-test-agent"].name).toBe("Custom Test Agent");
         expect(profiles["custom-test-agent"].mcpConfig?.paths).toEqual(["~/.custom/mcp.json"]);
         expect(profiles["custom-test-agent"].skills?.paths).toEqual(["~/.custom/skills"]);
+        expect(profiles["custom-test-agent"].plugins?.paths).toEqual(["~/.custom/opencode.jsonc"]);
+        expect(profiles["custom-test-agent"].plugins?.dirPaths).toEqual(["~/.custom/plugin"]);
       } finally {
         textSpy.mockRestore();
       }
+    });
+
+    it("agentListCommand supports json output without throwing", () => {
+      expect(() => agentListCommand({ json: true })).not.toThrow();
+    });
+
+    it("agentInstallSkillCommand runs cleanly in human and json modes", () => {
+      expect(() => agentInstallSkillCommand()).not.toThrow();
+      expect(() => agentInstallSkillCommand({ json: true })).not.toThrow();
+    });
+
+    it("instructionsCommand prints agent guidelines in text and json modes", () => {
+      expect(() => instructionsCommand()).not.toThrow();
+      expect(() => instructionsCommand({ json: true })).not.toThrow();
     });
   });
 
@@ -213,6 +305,30 @@ describe("Commands Implementation", () => {
       });
 
       expect(() => listCommand()).not.toThrow();
+    });
+
+    it("listCommand filters by agents option and displays settings cleanly", () => {
+      expect(() => listCommand({ agents: ["opencode"] })).not.toThrow();
+      expect(() => listCommand({ agents: ["claude"], settings: true })).not.toThrow();
+      expect(() => listCommand({ agents: ["nonexistent-agent"] })).not.toThrow();
+    });
+
+    it("listCommand outputs JSON with plugins field", () => {
+      let logged = "";
+      const origLog = console.log;
+      console.log = (msg: string) => {
+        logged = msg;
+      };
+      try {
+        listCommand({ json: true });
+        const parsed = JSON.parse(logged);
+        expect(parsed.agents).toBeDefined();
+        if (parsed.agents.length > 0) {
+          expect(parsed.agents[0].plugins).toBeDefined();
+        }
+      } finally {
+        console.log = origLog;
+      }
     });
   });
 
@@ -385,7 +501,7 @@ describe("Commands Implementation", () => {
       expect(manifest.name).toBe("my-shared-pack");
       // Secret should be redacted!
       expect(manifest.mcpServers?.testServer?.env?.API_KEY).toBe("${API_KEY}");
-      expect(manifest.requiredEnv.some((r) => r.key === "API_KEY")).toBe(true);
+      expect(manifest.requiredEnv?.some((r) => r.key === "API_KEY")).toBe(true);
 
       // Verify share recorded in history
       const history = getSharesHistory();
@@ -428,6 +544,350 @@ describe("Commands Implementation", () => {
       expect(fs.existsSync(manifestPath)).toBe(true);
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       expect(manifest.mcpServers?.customKeyServer).toBeDefined();
+    });
+
+    it("bundlePluginFiles bundles string plugins, object plugins with files, and directory plugins", async () => {
+      const pluginDir = path.join(testDir, "test-plugin-dir");
+      fs.mkdirSync(path.join(pluginDir, "sub"), { recursive: true });
+      fs.writeFileSync(path.join(pluginDir, "index.ts"), "export const x = 10;", "utf8");
+      fs.writeFileSync(path.join(pluginDir, "sub", "util.ts"), "export const y = 20;", "utf8");
+      fs.writeFileSync(path.join(pluginDir, ".DS_Store"), "junk", "utf8");
+
+      const plugins: PluginEntry[] = [
+        "opencode-gemini-auth@latest",
+        {
+          name: "object-plugin-with-files",
+          targetAgent: "opencode",
+          description: "Plugin with explicit files",
+          files: {
+            "index.ts": "console.log('hello');"
+          }
+        },
+        {
+          name: "dir-plugin",
+          path: pluginDir,
+          description: "Plugin from local dir"
+        }
+      ];
+
+      const { bundledPlugins, gistFiles } = await bundlePluginFiles(plugins);
+
+      expect(bundledPlugins.length).toBe(3);
+
+      const strPlugin = bundledPlugins.find((p) => p.name === "opencode-gemini-auth@latest");
+      expect(strPlugin).toBeDefined();
+
+      const objPlugin = bundledPlugins.find((p) => p.name === "object-plugin-with-files");
+      expect(objPlugin).toBeDefined();
+      expect(objPlugin?.files?.["index.ts"]).toBe("console.log('hello');");
+      expect(gistFiles["plugins_object-plugin-with-files_index.ts"].content).toBe("console.log('hello');");
+
+      const dirPlugin = bundledPlugins.find((p) => p.name === "dir-plugin");
+      expect(dirPlugin).toBeDefined();
+      expect(dirPlugin?.files?.["index.ts"]).toBe("export const x = 10;");
+      expect(dirPlugin?.files?.["sub/util.ts"]).toBe("export const y = 20;");
+      expect(dirPlugin?.files?.[".DS_Store"]).toBeUndefined();
+      expect(gistFiles["plugins_dir-plugin_index.ts"]).toBeDefined();
+      expect(gistFiles["plugins_dir-plugin_sub_util.ts"]).toBeDefined();
+    });
+
+    it("exportPackLocally exports both skills and plugins into destination directory", () => {
+      const outDir = path.join(testDir, "exported-plugin-pack");
+      const manifest: Manifest = {
+        name: "exported-with-plugins",
+        version: "1.0.0",
+        description: "Test local export with plugins",
+        mcpServers: {},
+        skills: [],
+        plugins: [
+          {
+            name: "plugin-with-script",
+            files: { "main.ts": "export default {};" }
+          }
+        ],
+        requiredEnv: []
+      };
+
+      const bundledPlugins: PluginEntry[] = [
+        {
+          name: "plugin-with-script",
+          files: { "main.ts": "export default {};" }
+        }
+      ];
+
+      exportPackLocally(manifest, [], outDir, bundledPlugins);
+
+      expect(fs.existsSync(path.join(outDir, "smcp.json"))).toBe(true);
+      expect(
+        fs.existsSync(path.join(outDir, "plugins", "main.ts")) ||
+        fs.existsSync(path.join(outDir, "plugins", "plugin-with-script", "main.ts"))
+      ).toBe(true);
+    });
+
+    it("shareCommand exports plugins and records them in history", async () => {
+      const opencodeConf = path.join(testDir, "opencode-share.json");
+      fs.writeFileSync(
+        opencodeConf,
+        JSON.stringify({
+          plugin: ["opencode-gemini-auth@latest"]
+        }),
+        "utf8"
+      );
+
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("plugin-agent", {
+        name: "Plugin Agent",
+        mcpConfig: null,
+        skills: null,
+        plugins: {
+          paths: [opencodeConf],
+          key: "plugin",
+          format: "array"
+        }
+      });
+
+      const outDir = path.join(testDir, "shared-plugin-pack-out");
+
+      await shareCommand({
+        output: outDir,
+        name: "plugin-pack",
+        description: "Exported with plugin",
+        plugins: ["opencode-gemini-auth@latest"],
+        servers: [],
+        skills: []
+      });
+
+      expect(fs.existsSync(path.join(outDir, "smcp.json"))).toBe(true);
+      const manifest: Manifest = JSON.parse(
+        fs.readFileSync(path.join(outDir, "smcp.json"), "utf8")
+      );
+      expect(manifest.name).toBe("plugin-pack");
+      expect(manifest.plugins).toBeDefined();
+      expect(manifest.plugins?.some((p) => (typeof p === "string" ? p : p.name) === "opencode-gemini-auth@latest")).toBe(true);
+
+      const history = getSharesHistory();
+      const rec = history.shares.find((s) => s.name === "plugin-pack");
+      expect(rec).toBeDefined();
+    });
+
+    const setupMockAgentWithServer = () => {
+      const agentMcpPath = path.join(testDir, "agent-mcp.json");
+      fs.writeFileSync(
+        agentMcpPath,
+        JSON.stringify({
+          mcpServers: {
+            testServer: { command: "node", args: ["test.js"] }
+          }
+        }),
+        "utf8"
+      );
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("mock-agent", {
+        name: "Mock Agent",
+        mcpConfig: { paths: [agentMcpPath], key: "mcpServers" },
+        skills: null
+      });
+    };
+
+    it("shareCommand fails fast in non-interactive mode when sharing to repository without authentication", async () => {
+      setupMockAgentWithServer();
+
+      let loggedError = "";
+      const errSpy = spyOn(console, "error").mockImplementation((msg?: any) => {
+        loggedError = String(msg);
+      });
+
+      try {
+        await shareCommand({
+          provider: "repo",
+          repo: "octocat/my-repo",
+          name: "unauth-pack",
+          servers: ["testServer"],
+          skills: [],
+          plugins: [],
+          json: true
+        });
+
+        expect(loggedError).toContain("Cannot publish to GitHub repository without authentication");
+        const parsed = JSON.parse(loggedError);
+        expect(parsed.success).toBe(false);
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
+    it("shareCommand fails fast in non-interactive mode with diagnostic error when token lacks repo scope", async () => {
+      setupMockAgentWithServer();
+      saveAuthConfig({ githubToken: "ghp_gist_only_token", githubUser: "octocat" });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["gist"],
+        hasRepoScope: false,
+        hasGistScope: true
+      });
+
+      let loggedError = "";
+      const errSpy = spyOn(console, "error").mockImplementation((msg?: any) => {
+        loggedError = String(msg);
+      });
+
+      try {
+        await shareCommand({
+          provider: "repo",
+          repo: "octocat/missing-scope-repo",
+          name: "scope-test-pack",
+          servers: ["testServer"],
+          skills: [],
+          plugins: [],
+          json: true
+        });
+
+        expect(loggedError).toContain("lacks the 'repo' scope required to publish repositories");
+        expect(loggedError).toContain("To fix: run 'smcp auth login'");
+        const parsed = JSON.parse(loggedError);
+        expect(parsed.success).toBe(false);
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        errSpy.mockRestore();
+      }
+    });
+
+    it("shareCommand publishes pack to GitHub repository when authenticated with repo scope", async () => {
+      setupMockAgentWithServer();
+      saveAuthConfig({ githubToken: "ghp_full_token", githubUser: "octocat" });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      const origCommit = GitHubClient.prototype.commitFilesToRepo;
+
+      let committedPayload: any = null;
+
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["gist", "repo"],
+        hasRepoScope: true,
+        hasGistScope: true
+      });
+
+      GitHubClient.prototype.commitFilesToRepo = async (params) => {
+        committedPayload = params;
+        return {
+          commitSha: "sha123456",
+          html_url: `https://github.com/${params.owner}/${params.repo}`,
+          branch: params.branch || "main"
+        };
+      };
+
+      let loggedOutput = "";
+      const logSpy = spyOn(console, "log").mockImplementation((msg?: any) => {
+        loggedOutput = String(msg);
+      });
+
+      try {
+        await shareCommand({
+          provider: "repo",
+          repo: "octocat/my-new-repo",
+          name: "repo-pack",
+          description: "A pack in a repository",
+          branch: "main",
+          servers: ["testServer"],
+          skills: [],
+          plugins: [],
+          public: true,
+          json: true
+        });
+
+        expect(committedPayload).toBeDefined();
+        expect(committedPayload.owner).toBe("octocat");
+        expect(committedPayload.repo).toBe("my-new-repo");
+        expect(committedPayload.branch).toBe("main");
+        expect(committedPayload.files["smcp.json"]).toBeDefined();
+        expect(committedPayload.files["README.md"]).toBeDefined();
+        expect(committedPayload.files["README.md"]).toContain("# repo-pack");
+
+        const parsedOutput = JSON.parse(loggedOutput);
+        expect(parsedOutput.success).toBe(true);
+        expect(parsedOutput.type).toBe("repo");
+        expect(parsedOutput.provider).toBe("repo");
+        expect(parsedOutput.repo).toBe("octocat/my-new-repo");
+        expect(parsedOutput.commit).toBe("sha123456");
+
+        // Verify share history was recorded with targetType: "repo"
+        const history = getSharesHistory();
+        const rec = history.shares.find((s) => s.name === "repo-pack");
+        expect(rec).toBeDefined();
+        expect(rec?.targetType).toBe("repo");
+        expect(rec?.repoFullName).toBe("octocat/my-new-repo");
+        expect(rec?.targetUrl).toBe("https://github.com/octocat/my-new-repo");
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        GitHubClient.prototype.commitFilesToRepo = origCommit;
+        logSpy.mockRestore();
+      }
+    });
+
+    it("shareCommand bumps version and preserves repo details when updating existing repo pack", async () => {
+      setupMockAgentWithServer();
+      saveAuthConfig({ githubToken: "ghp_full_token", githubUser: "octocat" });
+
+      // Pre-seed share history
+      recordShare({
+        name: "existing-repo-pack",
+        version: "1.0.4",
+        targetType: "repo",
+        targetUrl: "https://github.com/octocat/existing-repo-pack",
+        repoFullName: "octocat/existing-repo-pack",
+        lastSharedAt: new Date().toISOString(),
+        fingerprints: { mcpServers: {}, skills: {} }
+      });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      const origCommit = GitHubClient.prototype.commitFilesToRepo;
+
+      let committedMessage = "";
+
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["repo"],
+        hasRepoScope: true
+      });
+
+      GitHubClient.prototype.commitFilesToRepo = async (params) => {
+        committedMessage = params.message;
+        return {
+          commitSha: "sha987654",
+          html_url: `https://github.com/${params.owner}/${params.repo}`,
+          branch: "main"
+        };
+      };
+
+      try {
+        await shareCommand({
+          provider: "repo",
+          name: "existing-repo-pack",
+          servers: ["testServer"],
+          skills: [],
+          plugins: [],
+          yes: true,
+          json: true
+        });
+
+        expect(committedMessage).toContain("v1.0.5");
+
+        const history = getSharesHistory();
+        const rec = history.shares.find((s) => s.name === "existing-repo-pack");
+        expect(rec?.version).toBe("1.0.5");
+        expect(rec?.targetType).toBe("repo");
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        GitHubClient.prototype.commitFilesToRepo = origCommit;
+      }
     });
   });
 
@@ -561,6 +1021,45 @@ describe("Commands Implementation", () => {
       expect(files["/etc/passwd"]).toBeUndefined();
     });
 
+    it("extractPluginFiles extracts from plugin.files, rawFiles, and localDir", () => {
+      // 1. From plugin.files
+      const pluginWithFiles: PluginEntry = {
+        name: "obj-plugin",
+        files: { "index.ts": "export default 42;" }
+      };
+      expect(extractPluginFiles(pluginWithFiles)["index.ts"]).toBe("export default 42;");
+
+      // 2. From Gist rawFiles
+      const strPlugin = "gist-plugin";
+      const rawFiles = {
+        "plugins_gist-plugin_tool.ts": "console.log('gist tool');",
+        "plugins_other-plugin_tool.ts": "console.log('other tool');"
+      };
+      const gistFiles = extractPluginFiles(strPlugin, rawFiles);
+      expect(gistFiles["tool.ts"]).toBe("console.log('gist tool');");
+      expect(gistFiles["other-plugin_tool.ts"]).toBeUndefined();
+
+      // 3. From localDir
+      const localPack = path.join(testDir, "local-plugin-pack");
+      const localPluginDir = path.join(localPack, "plugins", "local-p");
+      fs.mkdirSync(localPluginDir, { recursive: true });
+      fs.writeFileSync(path.join(localPluginDir, "run.ts"), "export const run = true;", "utf8");
+
+      const localFiles = extractPluginFiles("local-p", undefined, localPack);
+      expect(localFiles["run.ts"]).toBe("export const run = true;");
+
+      // 4. Traversal rejection
+      const traversalFiles = {
+        "plugins_evil-plugin_../../bad.ts": "bad",
+        "plugins_evil-plugin_/bad.ts": "bad",
+        "plugins_evil-plugin_good.ts": "good"
+      };
+      const safeExtracted = extractPluginFiles("evil-plugin", traversalFiles);
+      expect(safeExtracted["good.ts"]).toBe("good");
+      expect(safeExtracted["../../bad.ts"]).toBeUndefined();
+      expect(safeExtracted["/bad.ts"]).toBeUndefined();
+    });
+
     it("installPackIntoAgents installs MCP servers and skill files into agent configs", () => {
       const agentMcpPath = path.join(testDir, "installed-agent-mcp.json");
       const agentSkillsDir = path.join(testDir, "installed-agent-skills");
@@ -639,6 +1138,92 @@ describe("Commands Implementation", () => {
       expect(
         fs.readFileSync(path.join(agentSkillsDir, "git-helper", "SKILL.md"), "utf8")
       ).toBe("# Git Helper Skill");
+    });
+
+    it("installPackIntoAgents installs plugins into array and map agents and respects targetAgent", () => {
+      const opencodeConf = path.join(testDir, "agent-opencode.json");
+      const claudeConf = path.join(testDir, "agent-claude.json");
+      const pluginDir = path.join(testDir, "agent-custom-plugins");
+
+      fs.writeFileSync(opencodeConf, JSON.stringify({ plugin: ["existing-opencode-plugin"] }), "utf8");
+      fs.writeFileSync(claudeConf, JSON.stringify({ enabledPlugins: { "existing-claude-plugin": true } }), "utf8");
+
+      const customProfiles: Record<string, AgentProfile> = {
+        "test-opencode": {
+          name: "Test OpenCode",
+          mcpConfig: null,
+          skills: null,
+          plugins: {
+            paths: [opencodeConf],
+            key: "plugin",
+            format: "array",
+            dirPaths: [pluginDir]
+          }
+        },
+        "test-claude": {
+          name: "Test Claude",
+          mcpConfig: null,
+          skills: null,
+          plugins: {
+            paths: [claudeConf],
+            key: "enabledPlugins",
+            format: "map"
+          }
+        }
+      };
+
+      const manifest: Manifest = {
+        name: "plugin-pack",
+        version: "1.0.0",
+        mcpServers: {},
+        skills: [],
+        plugins: [
+          {
+            name: "opencode-only-plugin",
+            targetAgent: "opencode",
+            files: { "index.ts": "console.log('opencode tool');" }
+          },
+          {
+            name: "claude-only-plugin",
+            targetAgent: "claude-code"
+          },
+          "shared-plugin"
+        ],
+        requiredEnv: []
+      };
+
+      const result = installPackIntoAgents(
+        manifest,
+        ["test-opencode", "test-claude"],
+        {},
+        undefined,
+        undefined,
+        customProfiles,
+        pluginDir
+      );
+
+      expect(result.installedPlugins).toContain("test-opencode");
+      expect(result.installedPlugins).toContain("test-claude");
+
+      // Verify OpenCode configuration
+      const opencodeParsed = JSON.parse(fs.readFileSync(opencodeConf, "utf8"));
+      expect(opencodeParsed.plugin).toContain("existing-opencode-plugin");
+      expect(opencodeParsed.plugin).toContain("opencode-only-plugin");
+      expect(opencodeParsed.plugin).toContain("shared-plugin");
+      expect(opencodeParsed.plugin).not.toContain("claude-only-plugin");
+
+      // Verify Claude configuration
+      const claudeParsed = JSON.parse(fs.readFileSync(claudeConf, "utf8"));
+      expect(claudeParsed.enabledPlugins["existing-claude-plugin"]).toBe(true);
+      expect(claudeParsed.enabledPlugins["claude-only-plugin"]).toBe(true);
+      expect(claudeParsed.enabledPlugins["shared-plugin"]).toBe(true);
+      expect(claudeParsed.enabledPlugins["opencode-only-plugin"]).toBeUndefined();
+
+      // Verify plugin file was installed into pluginDir
+      expect(
+        fs.existsSync(path.join(pluginDir, "index.ts")) ||
+        fs.existsSync(path.join(pluginDir, "opencode-only-plugin", "index.ts"))
+      ).toBe(true);
     });
 
     it("resolveActiveAgentPath returns existing path or falls back to first path", () => {
@@ -1007,6 +1592,63 @@ describe("Commands Implementation", () => {
         confirmSpy.mockRestore();
         cancelSpy.mockRestore();
       }
+    });
+
+    it("installCommand installs plugins and writes plugin scripts to custom pluginDir", async () => {
+      const packDir = path.join(testDir, "pack-with-plugins");
+      const packPluginDir = path.join(packDir, "plugins", "my-tool");
+      fs.mkdirSync(packPluginDir, { recursive: true });
+      fs.writeFileSync(path.join(packPluginDir, "index.ts"), "console.log('installed tool');", "utf8");
+
+      fs.writeFileSync(
+        path.join(packDir, "smcp.json"),
+        JSON.stringify({
+          name: "pack-with-plugins",
+          version: "1.0.0",
+          mcpServers: {},
+          skills: [],
+          plugins: [
+            {
+              name: "my-tool",
+              targetAgent: "opencode"
+            }
+          ],
+          requiredEnv: []
+        }),
+        "utf8"
+      );
+
+      const opencodeConf = path.join(testDir, "dest-opencode.json");
+      fs.writeFileSync(opencodeConf, JSON.stringify({ plugin: [] }), "utf8");
+
+      const destPluginDir = path.join(testDir, "custom-installed-plugins");
+
+      const customProfilesPath = path.join(testDir, "custom-agents.json");
+      process.env.SMCP_CUSTOM_AGENTS_PATH = customProfilesPath;
+      saveCustomAgent("plugin-dest-agent", {
+        name: "Plugin Dest Agent",
+        mcpConfig: null,
+        skills: null,
+        plugins: {
+          paths: [opencodeConf],
+          key: "plugin",
+          format: "array"
+        }
+      });
+
+      await installCommand(packDir, {
+        agents: ["plugin-dest-agent"],
+        pluginDir: destPluginDir,
+        force: true
+      });
+
+      const updatedConf = JSON.parse(fs.readFileSync(opencodeConf, "utf8"));
+      expect(updatedConf.plugin).toContain("my-tool");
+
+      expect(
+        fs.existsSync(path.join(destPluginDir, "index.ts")) ||
+        fs.existsSync(path.join(destPluginDir, "my-tool", "index.ts"))
+      ).toBe(true);
     });
   });
 });

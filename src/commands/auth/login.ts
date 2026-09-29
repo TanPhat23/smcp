@@ -1,14 +1,14 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { GitHubClient } from "../core/github.ts";
-import { clearAuthConfig, getAuthConfig, saveAuthConfig } from "../core/state.ts";
+import { GitHubClient } from "../../core/github.ts";
+import { saveAuthConfig } from "../../core/state/index.ts";
 
 export async function authLoginCommand(): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" smcp — GitHub Authentication ")));
 
   p.note(
-    "To share packs as Gists, smcp requires a GitHub Personal Access Token (PAT).\n" +
-      "Generate one here: https://github.com/settings/tokens/new?scopes=gist&description=smcp-cli",
+    "To share packs as Gists or Repositories, smcp requires a GitHub Personal Access Token (PAT).\n" +
+      "Generate one here: https://github.com/settings/tokens/new?scopes=gist,repo&description=smcp-cli",
     "Instructions"
   );
 
@@ -36,29 +36,5 @@ export async function authLoginCommand(): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     s.stop(pc.red("✖ Authentication failed"));
     p.cancel(message);
-  }
-}
-
-export function authLogoutCommand(): void {
-  clearAuthConfig();
-  p.outro(pc.green("✔ Logged out. Token removed from ~/.smcp/config.json"));
-}
-
-export async function authStatusCommand(): Promise<void> {
-  const config = getAuthConfig();
-  if (!config.githubToken) {
-    p.log.warn("Not logged in. Run: smcp auth login");
-    return;
-  }
-  const s = p.spinner();
-  s.start("Checking token validity...");
-  try {
-    const client = new GitHubClient(config.githubToken);
-    const user = await client.verifyUser();
-    s.stop(pc.green(`✔ Logged in as @${user.login}`));
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    s.stop(pc.red("✖ Stored token is invalid or expired."));
-    p.log.message(`Error: ${message}`);
   }
 }

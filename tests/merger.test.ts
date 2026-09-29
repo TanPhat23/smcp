@@ -2,8 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { installSkillFiles, mergeMcpServersIntoFile } from "../src/core/merger.ts";
-import type { McpServerConfig } from "../src/types.ts";
+import {
+  formatServerForAgent,
+  getMcpAdapter,
+  installPluginFiles,
+  installSkillFiles,
+  mergeMcpServersIntoFile,
+  mergePluginsIntoFile,
+  registerMcpAdapter,
+  resetMcpAdapters,
+  unregisterMcpAdapter
+} from "../src/core/merger/index.ts";
+import { stripJsonComments } from "../src/core/agents/index.ts";
+import type { McpAdapter, McpServerConfig } from "../src/types/index.ts";
 
 describe("Config Merger (mergeMcpServersIntoFile)", () => {
   let testDir: string;
@@ -108,6 +119,174 @@ describe("Config Merger (mergeMcpServersIntoFile)", () => {
     expect(updated.version).toBe("1.0");
     expect(updated.customMcp.existingServer).toEqual({ command: "node", args: ["old.js"] });
     expect(updated.customMcp.addedServer).toEqual({ command: "bun", args: ["new.js"] });
+  });
+
+  it("merges servers into OpenCode config using 'mcp' key and McpLocalConfig format", () => {
+    const configPath = path.join(testDir, "opencode-native.json");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "sequential-thinking": {
+              type: "local",
+              command: ["bunx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+              enabled: true
+            }
+          }
+        },
+        null,
+        2
+      ) + "\n"
+    );
+
+    mergeMcpServersIntoFile(configPath, {
+      "sequential-thinking": {
+        command: "bunx",
+        args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+      },
+      "new-local": {
+        command: "npx",
+        args: ["-y", "new-mcp"],
+        env: { FOO: "bar" }
+      },
+      "new-remote": {
+        url: "https://mcp.example.com"
+      }
+    });
+
+    const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(updated.mcp["sequential-thinking"]).toEqual({
+      type: "local",
+      command: ["bunx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+      enabled: true
+    });
+    expect(updated.mcp["new-local"]).toEqual({
+      type: "local",
+      command: ["npx", "-y", "new-mcp"],
+      environment: { FOO: "bar" },
+      enabled: true
+    });
+    expect(updated.mcp["new-remote"]).toEqual({
+      type: "remote",
+      url: "https://mcp.example.com",
+      enabled: true
+    });
+  });
+
+  it("formatServerForAgent converts between standard MCP and OpenCode schemas safely", () => {
+    // OpenCode local
+    const ocLocal = formatServerForAgent(
+      { command: "bunx", args: ["-y", "tool"], env: { SECRET: "1" } },
+      "mcp",
+      "/path/to/opencode.jsonc"
+    );
+    expect(ocLocal.type).toBe("local");
+    expect(ocLocal.command).toEqual(["bunx", "-y", "tool"]);
+    expect(ocLocal.environment).toEqual({ SECRET: "1" });
+    expect(ocLocal.enabled).toBe(true);
+    expect((ocLocal as any).args).toBeUndefined();
+    expect((ocLocal as any).env).toBeUndefined();
+
+    // OpenCode remote
+    const ocRemote = formatServerForAgent(
+      { url: "https://remote.mcp" },
+      "mcp",
+      "/path/to/opencode.jsonc"
+    );
+    expect(ocRemote.type).toBe("remote");
+    expect(ocRemote.url).toBe("https://remote.mcp");
+    expect(ocRemote.enabled).toBe(true);
+
+    // Standard Claude Code / Cursor format
+    const claudeLocal = formatServerForAgent(
+      { command: ["npx", "run-tool"] as any, environment: { KEY: "VAL" } as any },
+      "mcpServers",
+      "/home/user/.claude.json"
+    );
+    expect(claudeLocal.command).toBe("npx");
+    expect(claudeLocal.args).toEqual(["run-tool"]);
+    expect(claudeLocal.env).toEqual({ KEY: "VAL" });
+    expect((claudeLocal as any).environment).toBeUndefined();
+  });
+
+  it("extensible MCP adapter registry supports custom agent formats and lifecycle", () => {
+    try {
+      const customAdapter: McpAdapter = {
+        name: "custom-agent-format",
+        matches: (ctx) => ctx.format === "custom-agent" || ctx.agentId === "custom-agent",
+        serialize: (cfg, _ctx, existing) => {
+          return {
+            binary: cfg.command || "unknown",
+            parameters: cfg.args || [],
+            customTag: "v1",
+            ...(existing && typeof existing === "object" ? existing : {})
+          };
+        },
+        deserialize: (raw) => {
+          return {
+            command: String(raw.binary || ""),
+            args: Array.isArray(raw.parameters) ? raw.parameters.map(String) : []
+          };
+        }
+      };
+
+      registerMcpAdapter(customAdapter);
+
+      // Verify retrieval by name
+      const retrieved = getMcpAdapter("custom-agent-format");
+      expect(retrieved.name).toBe("custom-agent-format");
+
+      // Verify retrieval by context
+      const byCtx = getMcpAdapter({ format: "custom-agent" });
+      expect(byCtx.name).toBe("custom-agent-format");
+
+      // Test serialization through mergeMcpServersIntoFile with options object
+      const configPath = path.join(testDir, "custom-agent-conf.json");
+      fs.writeFileSync(configPath, JSON.stringify({ mcpServers: {} }), "utf8");
+
+      mergeMcpServersIntoFile(
+        configPath,
+        {
+          myServer: { command: "custom-bin", args: ["--flag", "val"] }
+        },
+        {
+          mcpKey: "mcpServers",
+          format: "custom-agent",
+          agentId: "custom-agent"
+        }
+      );
+
+      const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      expect(parsed.mcpServers.myServer).toEqual({
+        binary: "custom-bin",
+        parameters: ["--flag", "val"],
+        customTag: "v1"
+      });
+
+      // Test deserialization
+      const canon = retrieved.deserialize(parsed.mcpServers.myServer);
+      expect(canon.command).toBe("custom-bin");
+      expect(canon.args).toEqual(["--flag", "val"]);
+
+      // Test unregistering
+      expect(unregisterMcpAdapter("custom-agent-format")).toBe(true);
+      const fallback = getMcpAdapter({ format: "custom-agent" });
+      expect(fallback.name).toBe("standard");
+
+      // Test prototype pollution protection
+      expect(() =>
+        registerMcpAdapter({
+          name: "__proto__",
+          matches: () => false,
+          serialize: () => ({}),
+          deserialize: () => ({})
+        })
+      ).toThrow(/Invalid adapter name/);
+    } finally {
+      resetMcpAdapters();
+    }
   });
 
   it("overwrites an existing server when the server name already exists", () => {
@@ -675,5 +854,181 @@ describe("Skill File Installer (installSkillFiles)", () => {
     expect(fs.existsSync(skillDir)).toBe(true);
     const files = fs.readdirSync(skillDir);
     expect(files.length).toBe(0);
+  });
+});
+
+describe("Plugins Merger & File Installer", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = path.join(
+      os.tmpdir(),
+      "smcp-plugins-merger-test-" + Date.now() + "-" + Math.random().toString(36).slice(2)
+    );
+    fs.mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("merges array plugins into JSONC file without duplicates", () => {
+    const configPath = path.join(testDir, "test-opencode.jsonc");
+    fs.writeFileSync(configPath, `{\n  // comment\n  "plugin": ["existing-plugin"]\n}`, "utf8");
+
+    mergePluginsIntoFile(configPath, ["new-plugin@latest", "existing-plugin"], "plugin", "array");
+
+    const content = fs.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(stripJsonComments(content));
+    expect(parsed.plugin).toEqual(["existing-plugin", "new-plugin@latest"]);
+  });
+
+  it("merges map plugins into JSON file setting true", () => {
+    const configPath = path.join(testDir, "test-claude.json");
+    fs.writeFileSync(configPath, JSON.stringify({ enabledPlugins: { "old-plugin": true } }), "utf8");
+
+    mergePluginsIntoFile(configPath, ["new-plugin@marketplace"], "enabledPlugins", "map");
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(parsed.enabledPlugins["old-plugin"]).toBe(true);
+    expect(parsed.enabledPlugins["new-plugin@marketplace"]).toBe(true);
+  });
+
+  it("installPluginFiles writes plugin scripts and rejects path traversal", () => {
+    const pluginDir = path.join(testDir, "plugins");
+    installPluginFiles(pluginDir, "my-plugin", {
+      "index.ts": "console.log('hi');"
+    });
+
+    expect(fs.existsSync(path.join(pluginDir, "index.ts")) || fs.existsSync(path.join(pluginDir, "my-plugin", "index.ts"))).toBe(true);
+
+    expect(() => {
+      installPluginFiles(pluginDir, "evil-plugin", {
+        "../../bad.txt": "evil"
+      });
+    }).toThrow(/traversal/i);
+  });
+
+  it("mergePluginsIntoFile validates arguments and rejects prototype pollution keys", () => {
+    expect(() => mergePluginsIntoFile("", ["plugin1"])).toThrow(/Invalid filePath/);
+    expect(() => mergePluginsIntoFile(null as any, ["plugin1"])).toThrow(/Invalid filePath/);
+    expect(() => mergePluginsIntoFile(path.join(testDir, "conf.json"), ["plugin1"], "__proto__")).toThrow(/Invalid key/);
+    expect(() => mergePluginsIntoFile(path.join(testDir, "conf.json"), ["plugin1"], "constructor")).toThrow(/Invalid key/);
+    expect(() => mergePluginsIntoFile(path.join(testDir, "conf.json"), ["plugin1"], "prototype")).toThrow(/Invalid key/);
+  });
+
+  it("mergePluginsIntoFile supports PluginEntry objects and ignores empty strings", () => {
+    const configPath = path.join(testDir, "opencode-objects.json");
+    fs.writeFileSync(configPath, JSON.stringify({ plugin: ["init-plugin"] }), "utf8");
+
+    mergePluginsIntoFile(
+      configPath,
+      [
+        { name: "obj-plugin-1", targetAgent: "opencode" },
+        "   ",
+        "",
+        { name: "obj-plugin-2" },
+        "str-plugin-3"
+      ],
+      "plugin",
+      "array"
+    );
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(parsed.plugin).toEqual(["init-plugin", "obj-plugin-1", "obj-plugin-2", "str-plugin-3"]);
+  });
+
+  it("mergePluginsIntoFile recognizes existing 'plugins' plural key in array format", () => {
+    const configPath = path.join(testDir, "opencode-plural.json");
+    fs.writeFileSync(configPath, JSON.stringify({ plugins: ["existing-plural"] }), "utf8");
+
+    mergePluginsIntoFile(configPath, ["new-plural"], "plugin", "array");
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(parsed.plugins).toEqual(["existing-plural", "new-plural"]);
+    expect(parsed.plugin).toBeUndefined();
+  });
+
+  it("mergePluginsIntoFile prevents prototype pollution in map format", () => {
+    const configPath = path.join(testDir, "claude-pollution.json");
+    fs.writeFileSync(configPath, JSON.stringify({ enabledPlugins: {} }), "utf8");
+
+    mergePluginsIntoFile(
+      configPath,
+      ["__proto__", "constructor", "prototype", "valid-plugin"],
+      "enabledPlugins",
+      "map"
+    );
+
+    const raw = fs.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    expect(parsed.enabledPlugins["valid-plugin"]).toBe(true);
+    expect(Object.hasOwn(parsed.enabledPlugins, "__proto__")).toBe(false);
+    expect(Object.hasOwn(parsed.enabledPlugins, "constructor")).toBe(false);
+    expect(Object.hasOwn(parsed.enabledPlugins, "prototype")).toBe(false);
+  });
+
+  it("mergePluginsIntoFile creates file and parent dirs when file does not exist", () => {
+    const configPath = path.join(testDir, "nested", "deep", "config.json");
+    mergePluginsIntoFile(configPath, ["created-plugin"], "plugin", "array");
+
+    expect(fs.existsSync(configPath)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(parsed.plugin).toEqual(["created-plugin"]);
+  });
+
+  it("mergePluginsIntoFile recovers gracefully from corrupt existing JSON", () => {
+    const configPath = path.join(testDir, "corrupt.json");
+    fs.writeFileSync(configPath, "{ not valid json @@@", "utf8");
+
+    mergePluginsIntoFile(configPath, ["recovered-plugin"], "plugin", "array");
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(parsed.plugin).toEqual(["recovered-plugin"]);
+  });
+
+  it("installPluginFiles validates targetDir and handles empty/null files safely", () => {
+    expect(() => installPluginFiles("", "test-plugin", {})).toThrow(/Invalid targetDir/);
+    expect(() => installPluginFiles(null as any, "test-plugin", {})).toThrow(/Invalid targetDir/);
+
+    const safeDir = path.join(testDir, "safe-plugins");
+    expect(() => installPluginFiles(safeDir, "test-plugin", null as any)).not.toThrow();
+    expect(() => installPluginFiles(safeDir, "test-plugin", [] as any)).not.toThrow();
+  });
+
+  it("installPluginFiles handles multi-file plugins into a dedicated subdirectory", () => {
+    const pluginDir = path.join(testDir, "plugins-multi");
+    installPluginFiles(pluginDir, "complex-plugin", {
+      "index.ts": "export const a = 1;",
+      "utils/helper.ts": "export const b = 2;"
+    });
+
+    expect(fs.existsSync(path.join(pluginDir, "complex-plugin", "index.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(pluginDir, "complex-plugin", "utils", "helper.ts"))).toBe(true);
+    expect(fs.readFileSync(path.join(pluginDir, "complex-plugin", "utils", "helper.ts"), "utf8")).toBe("export const b = 2;");
+  });
+
+  it("installPluginFiles rejects windows backslash traversal and absolute paths", () => {
+    const pluginDir = path.join(testDir, "plugins-sec");
+
+    expect(() => {
+      installPluginFiles(pluginDir, "evil-plugin", {
+        "..\\..\\bad.txt": "evil"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(() => {
+      installPluginFiles(pluginDir, "evil-plugin", {
+        "/etc/bad.txt": "evil"
+      });
+    }).toThrow(/traversal/i);
+
+    expect(() => {
+      installPluginFiles(pluginDir, "evil-plugin", {
+        "\\windows\\bad.txt": "evil"
+      });
+    }).toThrow(/traversal/i);
   });
 });

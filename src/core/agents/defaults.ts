@@ -1,0 +1,104 @@
+import type { AgentProfile } from "../../types/index.ts";
+
+function deepFreeze<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  Object.freeze(obj);
+  for (const value of Object.values(obj)) {
+    if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+      deepFreeze(value);
+    }
+  }
+  return obj;
+}
+
+export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
+  opencode: {
+    name: "OpenCode",
+    mcpConfig: {
+      paths: [
+        "./opencode.jsonc",
+        "./opencode.json",
+        "~/.config/opencode/opencode.jsonc",
+        "~/.config/opencode/opencode.json"
+      ],
+      key: "mcpServers"
+    },
+    skills: {
+      paths: [
+        "./.opencode/skills",
+        "~/.agents/skills",
+        "~/.config/opencode/skills"
+      ]
+    },
+    plugins: {
+      paths: [
+        "./opencode.jsonc",
+        "./opencode.json",
+        "~/.config/opencode/opencode.jsonc",
+        "~/.config/opencode/opencode.json"
+      ],
+      key: "plugin",
+      format: "array",
+      dirPaths: [
+        "./plugin",
+        "./.opencode/plugin",
+        "~/.config/opencode/plugin"
+      ]
+    }
+  },
+  "claude-code": {
+    name: "Claude Code",
+    mcpConfig: {
+      paths: ["~/.claude.json", "./.claude.json"],
+      key: "mcpServers"
+    },
+    skills: {
+      paths: ["~/.claude/skills", "./skills"]
+    },
+    plugins: {
+      paths: [
+        "~/.claude/settings.json",
+        "~/.claude/settings.local.json"
+      ],
+      key: "enabledPlugins",
+      format: "map"
+    }
+  },
+  "claude-desktop": {
+    name: "Claude Desktop",
+    mcpConfig: {
+      paths: [
+        "~/.config/Claude/claude_desktop_config.json",
+        "~/Library/Application Support/Claude/claude_desktop_config.json",
+        "%APPDATA%/Claude/claude_desktop_config.json"
+      ],
+      key: "mcpServers"
+    },
+    skills: null,
+    plugins: null
+  },
+  cursor: {
+    name: "Cursor",
+    mcpConfig: {
+      paths: ["~/.cursor/mcp.json", "./.cursor/mcp.json"],
+      key: "mcpServers"
+    },
+    skills: {
+      paths: ["~/.cursor/skills", "./.cursor/rules"]
+    },
+    plugins: null
+  },
+  windsurf: {
+    name: "Windsurf",
+    mcpConfig: {
+      paths: ["~/.codeium/windsurf/mcp_config.json"],
+      key: "mcpServers"
+    },
+    skills: {
+      paths: ["~/.codeium/windsurf/skills"]
+    },
+    plugins: null
+  }
+});

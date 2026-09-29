@@ -9,8 +9,8 @@ import {
   getSmcpDir,
   recordShare,
   saveAuthConfig
-} from "../src/core/state.ts";
-import type { ShareRecord } from "../src/types.ts";
+} from "../src/core/state/index.ts";
+import type { ShareRecord } from "../src/types/index.ts";
 
 describe("State Management (Local Config & History)", () => {
   let testDir: string;

@@ -5,13 +5,16 @@ import path from "node:path";
 import {
   DEFAULT_AGENTS,
   detectAgents,
+  filterAgents,
   getAgentProfiles,
   readInstalledMcpServers,
+  readInstalledPlugins,
   saveCustomAgent,
   scanSkills,
+  stripJsonComments,
   type DetectedAgent
-} from "../src/core/agents.ts";
-import { AgentProfileSchema, type AgentProfile } from "../src/types.ts";
+} from "../src/core/agents/index.ts";
+import { AgentProfileSchema, type AgentProfile } from "../src/types/index.ts";
 import { hashContent } from "../src/utils/crypto.ts";
 
 describe("Agent Profiles Registry & Default Agents", () => {
@@ -705,5 +708,239 @@ describe("scanSkills()", () => {
 
     const s4 = skills.find((s) => s.name === "uppercase-readme");
     expect(s4?.path).toBe(path.join(dir4, "README.md"));
+  });
+});
+
+describe("stripJsonComments()", () => {
+  it("strips single-line and multi-line comments", () => {
+    const input = `{\n  // single line comment\n  "key": "value",\n  /* multi\n     line */\n  "count": 42\n}`;
+    const cleaned = stripJsonComments(input);
+    const parsed = JSON.parse(cleaned);
+    expect(parsed.key).toBe("value");
+    expect(parsed.count).toBe(42);
+  });
+
+  it("preserves URLs and escaped strings containing slashes and asterisks", () => {
+    const input = `{\n  "url": "https://mcp.grep.app/query//test/*abc",\n  "name": "grep"\n}`;
+    const cleaned = stripJsonComments(input);
+    const parsed = JSON.parse(cleaned);
+    expect(parsed.url).toBe("https://mcp.grep.app/query//test/*abc");
+  });
+
+  it("strips trailing commas in objects and arrays", () => {
+    const input = `{\n  "items": [\n    "one",\n    "two",\n  ],\n  "done": true,\n}`;
+    const cleaned = stripJsonComments(input);
+    const parsed = JSON.parse(cleaned);
+    expect(parsed.items).toEqual(["one", "two"]);
+    expect(parsed.done).toBe(true);
+  });
+
+  it("preserves commas inside string literals even when followed by brackets", () => {
+    const input = `{\n  "msg": "Hello, world,}",\n  "pattern": "array[,]",\n  "trailing": true,\n}`;
+    const cleaned = stripJsonComments(input);
+    const parsed = JSON.parse(cleaned);
+    expect(parsed.msg).toBe("Hello, world,}");
+    expect(parsed.pattern).toBe("array[,]");
+    expect(parsed.trailing).toBe(true);
+  });
+});
+
+describe("filterAgents()", () => {
+  const agents: DetectedAgent[] = [
+    { id: "opencode", name: "OpenCode", mcpConfigPath: "/p/opencode.jsonc", skillsDirPath: "/p/skills" },
+    { id: "claude-code", name: "Claude Code", mcpConfigPath: "/p/claude.json", skillsDirPath: "/p/claude-skills" },
+    { id: "claude-desktop", name: "Claude Desktop", mcpConfigPath: "/p/desktop.json", skillsDirPath: null },
+    { id: "cursor", name: "Cursor", mcpConfigPath: "/p/cursor.json", skillsDirPath: "/p/cursor-skills" }
+  ];
+
+  it("returns all agents when filter is omitted or empty", () => {
+    expect(filterAgents(agents)).toEqual(agents);
+    expect(filterAgents(agents, [])).toEqual(agents);
+    expect(filterAgents(agents, ["   "])).toEqual(agents);
+  });
+
+  it("filters by exact agent id", () => {
+    const filtered = filterAgents(agents, ["opencode"]);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe("opencode");
+  });
+
+  it("filters with friendly alias 'claude' matching both claude-code and claude-desktop", () => {
+    const filtered = filterAgents(agents, ["claude"]);
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((a) => a.id)).toEqual(["claude-code", "claude-desktop"]);
+  });
+
+  it("supports comma-separated string inputs and case-insensitivity", () => {
+    const filtered = filterAgents(agents, ["CLAUDE-CODE,OPENCODE"]);
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((a) => a.id)).toEqual(["opencode", "claude-code"]);
+  });
+
+  it("supports name matching", () => {
+    const filtered = filterAgents(agents, ["Cursor"]);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe("cursor");
+  });
+});
+
+describe("readInstalledMcpServers() JSONC & OpenCode support", () => {
+  const testDir = path.join(os.tmpdir(), "smcp-jsonc-test-" + Date.now());
+
+  beforeEach(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(testDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("parses OpenCode jsonc with comments and array-formatted commands", () => {
+    const configPath = path.join(testDir, "opencode.jsonc");
+    const jsoncContent = `{\n  // OpenCode MCP config\n  "mcp": {\n    "context7": {\n      "type": "local",\n      "command": ["bunx", "-y", "@upstash/context7-mcp", "--api-key", "secret-key"],\n      "enabled": true\n    },\n    "servers": {\n      "grep": {\n        "type": "remote",\n        "url": "https://mcp.grep.app"\n      }\n    }\n  }\n}`;
+    fs.writeFileSync(configPath, jsoncContent, "utf8");
+
+    const servers = readInstalledMcpServers(configPath);
+    expect(servers.context7).toBeDefined();
+    expect(servers.context7.command).toBe("bunx");
+    expect(servers.context7.args).toEqual(["-y", "@upstash/context7-mcp", "--api-key", "secret-key"]);
+    expect(servers.grep).toBeDefined();
+    expect(servers.grep.url).toBe("https://mcp.grep.app");
+  });
+});
+
+describe("readInstalledPlugins & Agent Plugins", () => {
+  const pluginTestDir = path.join(os.tmpdir(), "smcp-plugin-test-" + Date.now());
+
+  beforeEach(() => {
+    if (fs.existsSync(pluginTestDir)) {
+      fs.rmSync(pluginTestDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(pluginTestDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(pluginTestDir)) {
+      fs.rmSync(pluginTestDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads array format plugins from OpenCode JSONC (plugin and plugins keys)", () => {
+    const opencodePath = path.join(pluginTestDir, "opencode.jsonc");
+    fs.writeFileSync(
+      opencodePath,
+      `{\n  // plugins comment\n  "plugin": ["opencode-gemini-auth@latest", "./plugin/antigravity.ts"]\n}`,
+      "utf8"
+    );
+
+    const plugins = readInstalledPlugins(opencodePath, "plugin", "array");
+    expect(plugins).toHaveLength(2);
+    expect(plugins.map((p) => (typeof p === "string" ? p : p.name))).toEqual([
+      "opencode-gemini-auth@latest",
+      "./plugin/antigravity.ts"
+    ]);
+  });
+
+  it("reads map format plugins from Claude Code settings.json (enabledPlugins)", () => {
+    const claudePath = path.join(pluginTestDir, "settings.json");
+    fs.writeFileSync(
+      claudePath,
+      JSON.stringify({
+        enabledPlugins: {
+          "superpowers@claude-plugins-official": true,
+          "disabled-plugin": false
+        }
+      }),
+      "utf8"
+    );
+
+    const plugins = readInstalledPlugins(claudePath, "enabledPlugins", "map");
+    expect(plugins).toHaveLength(1);
+    expect(plugins.map((p) => (typeof p === "string" ? p : p.name))).toEqual([
+      "superpowers@claude-plugins-official"
+    ]);
+  });
+
+  it("populates pluginsConfigPath and pluginsDirPath in detectAgents", () => {
+    const detected = detectAgents();
+    const opencodeAgent = detected.find((a) => a.id === "opencode");
+    expect(opencodeAgent).toBeDefined();
+    expect(opencodeAgent?.pluginsConfigPath).toBeDefined();
+  });
+
+  it("readInstalledPlugins returns empty array on invalid inputs or missing files", () => {
+    expect(readInstalledPlugins("")).toEqual([]);
+    expect(readInstalledPlugins("/non/existent/config.json")).toEqual([]);
+
+    const corruptPath = path.join(pluginTestDir, "bad.json");
+    fs.writeFileSync(corruptPath, "{ corrupt json syntax", "utf8");
+    expect(readInstalledPlugins(corruptPath)).toEqual([]);
+
+    const nonObjectPath = path.join(pluginTestDir, "array.json");
+    fs.writeFileSync(nonObjectPath, JSON.stringify(["just", "an", "array"]), "utf8");
+    expect(readInstalledPlugins(nonObjectPath)).toEqual([]);
+  });
+
+  it("readInstalledPlugins resolves existing local file paths for relative plugin entries", () => {
+    const localPluginDir = path.join(pluginTestDir, "plugin");
+    fs.mkdirSync(localPluginDir, { recursive: true });
+    const localPluginFile = path.join(localPluginDir, "my-tool.ts");
+    fs.writeFileSync(localPluginFile, "export default {};", "utf8");
+
+    const confPath = path.join(pluginTestDir, "opencode-local.json");
+    fs.writeFileSync(
+      confPath,
+      JSON.stringify({
+        plugin: ["./plugin/my-tool.ts", "./plugin/missing-tool.ts"]
+      }),
+      "utf8"
+    );
+
+    const plugins = readInstalledPlugins(confPath, "plugin", "array");
+    expect(plugins).toHaveLength(2);
+    expect(plugins[0].name).toBe("./plugin/my-tool.ts");
+    expect(plugins[0].path).toBe(localPluginFile);
+    expect(plugins[1].name).toBe("./plugin/missing-tool.ts");
+    expect(plugins[1].path).toBeUndefined();
+  });
+
+  it("readInstalledPlugins ignores prototype pollution keys in map format", () => {
+    const mapPath = path.join(pluginTestDir, "pollution.json");
+    fs.writeFileSync(
+      mapPath,
+      JSON.stringify({
+        enabledPlugins: {
+          __proto__: true,
+          constructor: true,
+          prototype: true,
+          "valid-plugin": true
+        }
+      }),
+      "utf8"
+    );
+
+    const plugins = readInstalledPlugins(mapPath, "enabledPlugins", "map");
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].name).toBe("valid-plugin");
+  });
+
+  it("readInstalledPlugins supports fallback 'plugins' key in array format", () => {
+    const confPath = path.join(pluginTestDir, "fallback-plural.json");
+    fs.writeFileSync(
+      confPath,
+      JSON.stringify({
+        plugins: ["plural-plugin-1", "plural-plugin-2"]
+      }),
+      "utf8"
+    );
+
+    const plugins = readInstalledPlugins(confPath, "plugin", "array");
+    expect(plugins).toHaveLength(2);
+    expect(plugins.map((p) => p.name)).toEqual(["plural-plugin-1", "plural-plugin-2"]);
   });
 });

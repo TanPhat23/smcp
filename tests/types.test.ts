@@ -5,10 +5,11 @@ import {
   DetectedAgentSchema,
   ManifestSchema,
   McpServerConfigSchema,
+  PluginEntrySchema,
   RequiredEnvSchema,
   ShareHistorySchema,
   ShareRecordSchema
-} from "../src/types.ts";
+} from "../src/types/index.ts";
 
 describe("Types and Schemas", () => {
   it("validates a valid smcp.json manifest", () => {
@@ -209,7 +210,81 @@ describe("ManifestSchema validation", () => {
     const parsed = ManifestSchema.parse(minimal);
     expect(parsed.mcpServers).toEqual({});
     expect(parsed.skills).toEqual([]);
+    expect(parsed.plugins).toEqual([]);
     expect(parsed.requiredEnv).toEqual([]);
+  });
+
+  it("validates manifest with string and object plugin entries", () => {
+    const manifestWithPlugins = {
+      name: "plugin-pack",
+      version: "1.0.0",
+      plugins: [
+        "opencode-gemini-auth@latest",
+        {
+          name: "custom-plugin",
+          targetAgent: "opencode",
+          description: "Local custom plugin",
+          path: "./plugin/custom.ts",
+          files: { "custom.ts": "console.log('hi');" }
+        }
+      ]
+    };
+
+    const parsed = ManifestSchema.parse(manifestWithPlugins);
+    expect(parsed.plugins).toHaveLength(2);
+    expect(parsed.plugins?.[0]).toBe("opencode-gemini-auth@latest");
+  });
+
+  it("validates agent profile with plugins configuration", () => {
+    const profile = {
+      name: "OpenCode",
+      mcpConfig: { paths: ["./opencode.jsonc"], key: "mcpServers" },
+      skills: { paths: ["~/.agents/skills"] },
+      plugins: {
+        paths: ["./opencode.jsonc"],
+        key: "plugin",
+        format: "array" as const,
+        dirPaths: ["./plugin"]
+      }
+    };
+    const parsed = AgentProfileSchema.parse(profile);
+    expect(parsed.plugins?.key).toBe("plugin");
+    expect(parsed.plugins?.format).toBe("array");
+    expect(parsed.plugins?.dirPaths).toEqual(["./plugin"]);
+  });
+});
+
+describe("PluginEntrySchema", () => {
+  it("validates string plugin entries", () => {
+    expect(PluginEntrySchema.parse("opencode-gemini-auth@latest")).toBe("opencode-gemini-auth@latest");
+    expect(PluginEntrySchema.parse("superpowers@claude-plugins-official")).toBe("superpowers@claude-plugins-official");
+  });
+
+  it("validates object plugin entries with optional properties", () => {
+    const pluginObj = {
+      name: "custom-tool",
+      targetAgent: "opencode",
+      description: "A custom tool plugin",
+      path: "./plugin/custom-tool.ts",
+      files: {
+        "custom-tool.ts": "export default {};"
+      }
+    };
+    const parsed = PluginEntrySchema.parse(pluginObj);
+    expect(typeof parsed).toBe("object");
+    if (typeof parsed === "object") {
+      expect(parsed.name).toBe("custom-tool");
+      expect(parsed.targetAgent).toBe("opencode");
+      expect(parsed.files?.["custom-tool.ts"]).toBe("export default {};");
+    }
+  });
+
+  it("rejects invalid plugin types and missing name", () => {
+    expect(() => PluginEntrySchema.parse(123)).toThrow();
+    expect(() => PluginEntrySchema.parse(null)).toThrow();
+    expect(() => PluginEntrySchema.parse({})).toThrow();
+    expect(() => PluginEntrySchema.parse({ description: "No name" })).toThrow();
+    expect(() => PluginEntrySchema.parse({ name: 123 })).toThrow();
   });
 });
 

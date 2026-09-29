@@ -1,10 +1,38 @@
 import { Command } from "commander";
-import { shareCommand } from "./commands/share.ts";
-import { installCommand } from "./commands/install.ts";
-import { listCommand } from "./commands/list.ts";
-import { authLoginCommand, authLogoutCommand, authStatusCommand } from "./commands/auth.ts";
-import { agentListCommand, agentAddCommand } from "./commands/agent.ts";
-import { inspectCommand } from "./commands/inspect.ts";
+import {
+  agentAddCommand,
+  agentInstallSkillCommand,
+  agentListCommand,
+  authLoginCommand,
+  authLogoutCommand,
+  authStatusCommand,
+  inspectCommand,
+  installCommand,
+  instructionsCommand,
+  listCommand,
+  shareCommand
+} from "./commands/index.ts";
+import { isPrototypePollutionKey } from "./utils/security.ts";
+
+function parseEnvOptions(rawEnv?: string[]): Record<string, string> {
+  if (!rawEnv || !Array.isArray(rawEnv)) return {};
+  const result: Record<string, string> = {};
+  for (const item of rawEnv) {
+    if (typeof item !== "string") continue;
+    const parts = item.includes(",") ? item.split(/,(?=[a-zA-Z_][a-zA-Z0-9_]*=)/) : [item];
+    for (const part of parts) {
+      const eqIdx = part.indexOf("=");
+      if (eqIdx > 0) {
+        const key = part.slice(0, eqIdx).trim();
+        const val = part.slice(eqIdx + 1).trim();
+        if (key && !isPrototypePollutionKey(key)) {
+          result[key] = val;
+        }
+      }
+    }
+  }
+  return result;
+}
 
 export function createProgram(): Command {
   const program = new Command();
@@ -18,12 +46,22 @@ export function createProgram(): Command {
     .command("share")
     .alias("export")
     .description("Bundle and share local skills and MCP servers")
+    .option("-P, --provider <provider>", "Share destination provider: gist, repo, or local (default: prompt or gist)")
+    .option("-R, --repo <repo>", "Target GitHub repository (e.g. owner/repo or repo-name) when provider is repo")
+    .option("--branch <branch>", "Target branch when sharing to a GitHub repository (default: main)")
     .option("-o, --output <dir>", "Export to a local folder instead of GitHub Gist")
-    .option("-a, --agents <agents...>", "Filter source agents to share from")
+    .option("-a, --agents <agents...>", "Filter source agents to share from (e.g. opencode, claude)")
     .option("-s, --servers <servers...>", "Specific MCP servers to share")
     .option("-k, --skills <skills...>", "Specific skills to share")
+    .option("-p, --plugins <plugins...>", "Specific plugins to share")
     .option("-n, --name <name>", "Pack name")
     .option("-d, --description <description>", "Pack description")
+    .option("--public", "Make published GitHub Gist or repository public")
+    .option("--secret-keys <patterns...>", "Custom secret key patterns to redact")
+    .option("--secret-values <patterns...>", "Custom secret value regex patterns to redact")
+    .option("--exclude-secret-keys <patterns...>", "Key patterns to exclude from secret redaction")
+    .option("-y, --yes", "Non-interactive mode, automatically accept defaults")
+    .option("--json", "Output results in machine-readable JSON format for AI agents")
     .action(async (options) => {
       await shareCommand(options);
     });
@@ -31,27 +69,50 @@ export function createProgram(): Command {
   program
     .command("install <source>")
     .alias("add")
-    .description("Install an agent pack from a Gist URL or local path")
-    .option("-a, --agents <agents...>", "Target agents to install into")
+    .description("Install an agent pack from a Gist URL, GitHub repository, or local path")
+    .option("-a, --agents <agents...>", "Target agents to install into (e.g. opencode, claude)")
     .option("-f, --force", "Force installation, overwriting existing configurations without prompting")
+    .option("-e, --env <vars...>", "Environment variables for installation in KEY=VALUE format")
+    .option("--plugin-dir <dir>", "Directory to install local plugin scripts into")
+    .option("-y, --yes", "Non-interactive mode, automatically accept defaults")
+    .option("--json", "Output results in machine-readable JSON format for AI agents")
     .action(async (source, options) => {
-      await installCommand(source, options);
+      const parsedEnv = options.env ? parseEnvOptions(options.env) : undefined;
+      await installCommand(source, {
+        ...options,
+        env: parsedEnv
+      });
     });
 
   program
     .command("inspect <source>")
     .alias("info")
-    .description("Inspect an agent pack details, required env vars, MCP servers, and skills without installing")
-    .action(async (source) => {
-      await inspectCommand(source);
+    .description("Inspect an agent pack from a Gist URL, GitHub repository, or local path")
+    .option("--json", "Output pack inspection in machine-readable JSON format for AI agents")
+    .action(async (source, options) => {
+      await inspectCommand(source, options);
     });
 
   program
     .command("list")
     .alias("ls")
     .description("List installed skills and MCP servers across detected agents")
-    .action(() => {
-      listCommand();
+    .option("-a, --agents <agents...>", "Filter agents to display (e.g. opencode, claude)")
+    .option("-s, --settings", "Show detailed server settings, commands, arguments, and environment variables")
+    .option("-v, --verbose", "Show detailed server and skill settings (alias for --settings)")
+    .option("--json", "Output installed configuration in machine-readable JSON format for AI agents")
+    .action((options) => {
+      listCommand(options);
+    });
+
+  // Instructions / Usage for AI agents
+  program
+    .command("instructions")
+    .alias("usage")
+    .description("Show AI agent usage guide and instructions")
+    .option("--json", "Output instructions in JSON format")
+    .action((options) => {
+      instructionsCommand(options);
     });
 
   // Auth subcommands
@@ -85,8 +146,9 @@ export function createProgram(): Command {
     .command("list")
     .alias("ls")
     .description("List all configured agent profiles")
-    .action(() => {
-      agentListCommand();
+    .option("--json", "Output agent profiles in JSON format")
+    .action((options) => {
+      agentListCommand(options);
     });
 
   agent
@@ -94,6 +156,14 @@ export function createProgram(): Command {
     .description("Register a custom AI agent profile")
     .action(async () => {
       await agentAddCommand();
+    });
+
+  agent
+    .command("install-skill")
+    .description("Install the smcp skill into detected AI agents (OpenCode, Claude Code)")
+    .option("--json", "Output installation result in JSON format")
+    .action((options) => {
+      agentInstallSkillCommand(options);
     });
 
   return program;

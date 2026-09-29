@@ -1,6 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { isSecretKey, isSecretValue, redactMcpServers } from "../src/core/redactor.ts";
-import type { McpServerConfig } from "../src/types.ts";
+import {
+  getSecretPatterns,
+  isSecretKey,
+  isSecretValue,
+  normalizePattern,
+  redactMcpServers,
+  registerCustomDetector,
+  registerExcludedKeyPatterns,
+  registerSecretKeyPatterns,
+  registerSecretValuePatterns,
+  resetCustomSecretPatterns,
+  urlContainsCredentials
+} from "../src/core/redactor/index.ts";
+import type { McpServerConfig } from "../src/types/index.ts";
 
 describe("Secret Redactor Engine", () => {
   it("replaces sensitive env vars with placeholders", () => {
@@ -352,5 +364,395 @@ describe("Secret Redactor Engine", () => {
     const envEntry = requiredEnv.find(e => e.key === "_1PASSWORD_API_KEY");
     expect(envEntry).toBeDefined();
     expect(envEntry?.isSecret).toBe(true);
+  });
+});
+
+describe("Extensible Secret Patterns & AI Agent API", () => {
+  it("normalizePattern parses RegExps, slash strings, wildcards, and literals", () => {
+    // 1. RegExp passthrough
+    const regex = /^CUSTOM_API_[0-9]+$/;
+    expect(normalizePattern(regex)).toBe(regex);
+
+    // 2. Slash-delimited regex string
+    const slash = normalizePattern("/^token_[a-z0-9]+$/i");
+    expect(slash.test("token_abc123")).toBe(true);
+    expect(slash.test("TOKEN_XYZ")).toBe(true);
+    expect(slash.test("other")).toBe(false);
+
+    // 3. Glob wildcard strings
+    const globPrefix = normalizePattern("MY_CORP_*");
+    expect(globPrefix.test("MY_CORP_API_TOKEN")).toBe(true);
+    expect(globPrefix.test("MY_CORP_")).toBe(true);
+    expect(globPrefix.test("OTHER_CORP_API")).toBe(false);
+
+    const globSuffix = normalizePattern("*_PRIVATE_HASH");
+    expect(globSuffix.test("USER_PRIVATE_HASH")).toBe(true);
+    expect(globSuffix.test("USER_PUBLIC_HASH")).toBe(false);
+
+    // 4. Literal substring strings
+    const literal = normalizePattern("INTERNAL_SIGNATURE");
+    expect(literal.test("MY_INTERNAL_SIGNATURE_KEY")).toBe(true);
+    expect(literal.test("internal_signature")).toBe(true);
+    expect(literal.test("unrelated")).toBe(false);
+
+    // 5. Empty / whitespace inputs do not throw
+    expect(normalizePattern("").test("anything")).toBe(false);
+    expect(normalizePattern("   ").test("anything")).toBe(false);
+  });
+
+  it("identifies modern expanded default secret values out-of-the-box", () => {
+    // Google AI / Firebase keys (AIzaSy...)
+    expect(isSecretValue("AIzaSy" + "A".repeat(33))).toBe(true);
+
+    // AWS Access Key ID (AKIA... / ASIA...)
+    expect(isSecretValue("AKIA1234567890ABCDEF")).toBe(true);
+    expect(isSecretValue("ASIA1234567890ABCDEF")).toBe(true);
+
+    // OpenAI project key
+    expect(isSecretValue("sk-proj-" + "a".repeat(30))).toBe(true);
+
+    // Anthropic key
+    expect(isSecretValue("sk-ant-" + "a".repeat(30))).toBe(true);
+
+    // Slack bot/user tokens (xoxp-, xoxa-, xoxr-)
+    expect(isSecretValue("xoxp-123456789-abcdef")).toBe(true);
+    expect(isSecretValue("xoxa-123456789-abcdef")).toBe(true);
+
+    // Supabase tokens
+    expect(isSecretValue("sbp_" + "a".repeat(35))).toBe(true);
+
+    // GitLab PAT
+    expect(isSecretValue("glpat-" + "a".repeat(25))).toBe(true);
+
+    // NPM tokens
+    expect(isSecretValue("npm_" + "a".repeat(36))).toBe(true);
+
+    // Resend API keys
+    expect(isSecretValue("re_" + "a".repeat(32))).toBe(true);
+  });
+
+  it("supports custom key and value patterns passed via RedactorOptions", () => {
+    // Custom key pattern
+    expect(isSecretKey("COMPANY_TENANT_ID")).toBe(false);
+    expect(
+      isSecretKey("COMPANY_TENANT_ID", {
+        extraKeyPatterns: ["COMPANY_TENANT_ID"]
+      })
+    ).toBe(true);
+
+    // Custom glob pattern
+    expect(
+      isSecretKey("ORG_SECRET_PARAM_1", {
+        extraKeyPatterns: ["ORG_SECRET_*"]
+      })
+    ).toBe(true);
+
+    // Custom value regex pattern
+    expect(isSecretValue("acme-token-998877")).toBe(false);
+    expect(
+      isSecretValue("acme-token-998877", {
+        extraValuePatterns: ["/^acme-token-[0-9]+$/"]
+      })
+    ).toBe(true);
+  });
+
+  it("supports excludeKeyPatterns for allowlisting false-positive keys", () => {
+    // PUBLIC_KEY matches /KEY/ by default
+    expect(isSecretKey("PUBLIC_KEY")).toBe(true);
+
+    // Excluded via exact pattern
+    expect(
+      isSecretKey("PUBLIC_KEY", {
+        excludeKeyPatterns: [/^PUBLIC_KEY$/]
+      })
+    ).toBe(false);
+
+    // Excluded via glob pattern
+    expect(
+      isSecretKey("KEYBOARD_LAYOUT", {
+        excludeKeyPatterns: ["KEYBOARD_*"]
+      })
+    ).toBe(false);
+  });
+
+  it("supports runtime pattern registration and resets", () => {
+    resetCustomSecretPatterns();
+
+    try {
+      // 1. Initial clean state check
+      expect(isSecretKey("DYNAMIC_AGENT_PARAM_ABC")).toBe(false);
+      expect(isSecretValue("agent-vault-secret-123")).toBe(false);
+      expect(isSecretKey(null as any)).toBe(false);
+      expect(isSecretKey(undefined as any)).toBe(false);
+      expect(isSecretKey(12345 as any)).toBe(false);
+      expect(isSecretValue(null as any)).toBe(false);
+      expect(isSecretValue(undefined as any)).toBe(false);
+      expect(isSecretKey("__proto__")).toBe(false);
+      expect(isSecretKey("constructor")).toBe(false);
+      expect(isSecretKey("prototype")).toBe(false);
+
+      // 2. Safe registration of valid patterns and ignoring invalid/pollution keys
+      registerSecretKeyPatterns(
+        "DYNAMIC_AGENT_PARAM_*",
+        "/^slash-custom-[a-z]+$/i",
+        "",
+        "   ",
+        null as any,
+        undefined as any,
+        "__proto__",
+        "constructor"
+      );
+      registerSecretValuePatterns(
+        /^agent-vault-secret-[0-9]+$/,
+        null as any,
+        "",
+        "prototype"
+      );
+      registerExcludedKeyPatterns(
+        "DYNAMIC_AGENT_PARAM_EXCLUDED",
+        null as any,
+        "__proto__"
+      );
+
+      // 3. Verify registered patterns match
+      expect(isSecretKey("DYNAMIC_AGENT_PARAM_ABC")).toBe(true);
+      expect(isSecretKey("DYNAMIC_AGENT_PARAM_XYZ")).toBe(true);
+      expect(isSecretKey("slash-custom-blob")).toBe(true);
+      expect(isSecretKey("unrelated_param")).toBe(false);
+      expect(isSecretValue("agent-vault-secret-123")).toBe(true);
+      expect(isSecretValue("agent-vault-secret-notnumber")).toBe(false);
+
+      // 4. Verify exclusion precedence: exclusion wins over pattern match
+      expect(isSecretKey("DYNAMIC_AGENT_PARAM_EXCLUDED")).toBe(false);
+
+      // 5. Verify prototype pollution keys are not treated as secret keys
+      expect(isSecretKey("__proto__")).toBe(false);
+      expect(isSecretKey("constructor")).toBe(false);
+      expect(isSecretKey("prototype")).toBe(false);
+
+      // 6. Verify defensive copy of getSecretPatterns
+      const patterns = getSecretPatterns();
+      expect(patterns.registeredKeyPatterns.length).toBe(2);
+      expect(patterns.registeredValuePatterns.length).toBe(1);
+      expect(patterns.registeredExcludedKeyPatterns.length).toBe(1);
+
+      // Mutating returned array must not pollute internal registry
+      patterns.registeredKeyPatterns.push(/^POLLUTED_REGEX$/);
+      expect(isSecretKey("POLLUTED_REGEX")).toBe(false);
+      expect(getSecretPatterns().registeredKeyPatterns.length).toBe(2);
+
+      // 7. Verify end-to-end redaction using runtime registered patterns
+      const testServers: Record<string, McpServerConfig> = {
+        runtimeApp: {
+          command: "node",
+          env: {
+            DYNAMIC_AGENT_PARAM_ACTIVE: "secret-val-1",
+            DYNAMIC_AGENT_PARAM_EXCLUDED: "public-val-2",
+            UNTOUCHED_CONF: "safe"
+          },
+          args: ["--vault-ref", "agent-vault-secret-999"]
+        }
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(testServers);
+      expect(redactedServers.runtimeApp.env?.DYNAMIC_AGENT_PARAM_ACTIVE).toBe("${DYNAMIC_AGENT_PARAM_ACTIVE}");
+      expect(redactedServers.runtimeApp.env?.DYNAMIC_AGENT_PARAM_EXCLUDED).toBe("public-val-2");
+      expect(redactedServers.runtimeApp.env?.UNTOUCHED_CONF).toBe("safe");
+      expect(redactedServers.runtimeApp.args?.[1]).toBe("${RUNTIMEAPP_API_KEY}");
+      expect(requiredEnv.some((e) => e.key === "DYNAMIC_AGENT_PARAM_ACTIVE" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "DYNAMIC_AGENT_PARAM_EXCLUDED")).toBe(false);
+      expect(requiredEnv.some((e) => e.key === "RUNTIMEAPP_API_KEY" && e.isSecret)).toBe(true);
+
+      // 8. Reset and verify completely clean state
+      resetCustomSecretPatterns();
+      expect(isSecretKey("DYNAMIC_AGENT_PARAM_ABC")).toBe(false);
+      expect(isSecretKey("slash-custom-blob")).toBe(false);
+      expect(isSecretValue("agent-vault-secret-123")).toBe(false);
+
+      const clearedPatterns = getSecretPatterns();
+      expect(clearedPatterns.registeredKeyPatterns).toHaveLength(0);
+      expect(clearedPatterns.registeredValuePatterns).toHaveLength(0);
+      expect(clearedPatterns.registeredExcludedKeyPatterns).toHaveLength(0);
+    } finally {
+      resetCustomSecretPatterns();
+    }
+  });
+
+  it("supports custom detector functions for dynamic contextual inspection", () => {
+    const servers: Record<string, McpServerConfig> = {
+      aiBackend: {
+        command: "node",
+        args: ["--vault-item", "custom-encrypted-blob-123"],
+        env: {
+          SAFE_FLAG: "true",
+          CUSTOM_SECRET: "raw-val-xyz"
+        }
+      }
+    };
+
+    const customDetector = (context: any) => {
+      if (context.key === "CUSTOM_SECRET") {
+        return {
+          isSecret: true,
+          description: "Custom AI Agent Secret Key",
+          suggestedKey: "AI_BACKEND_CUSTOM_SECRET"
+        };
+      }
+      if (context.value?.startsWith("custom-encrypted-blob")) {
+        return {
+          isSecret: true,
+          description: "Encrypted blob credential",
+          suggestedKey: "ENCRYPTED_VAULT_BLOB"
+        };
+      }
+      return false;
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers, {
+      customDetectors: [customDetector]
+    });
+
+    expect(redactedServers.aiBackend.env?.CUSTOM_SECRET).toBe("${CUSTOM_SECRET}");
+    expect(redactedServers.aiBackend.args?.[1]).toBe("${ENCRYPTED_VAULT_BLOB}");
+
+    const customSecretEnv = requiredEnv.find(e => e.key === "CUSTOM_SECRET");
+    expect(customSecretEnv?.description).toBe("Custom AI Agent Secret Key");
+    expect(customSecretEnv?.isSecret).toBe(true);
+
+    const vaultBlobEnv = requiredEnv.find(e => e.key === "ENCRYPTED_VAULT_BLOB");
+    expect(vaultBlobEnv?.description).toBe("Encrypted blob credential");
+    expect(vaultBlobEnv?.isSecret).toBe(true);
+  });
+
+  it("supports environment variable based pattern extension (SMCP_EXTRA_SECRET_KEYS / VALUES)", () => {
+    const origKeys = process.env.SMCP_EXTRA_SECRET_KEYS;
+    const origValues = process.env.SMCP_EXTRA_SECRET_VALUES;
+    const origExclude = process.env.SMCP_EXCLUDE_SECRET_KEYS;
+
+    try {
+      process.env.SMCP_EXTRA_SECRET_KEYS = "ENV_CONFIDENTIAL_*,MY_SPECIAL_HASH";
+      process.env.SMCP_EXTRA_SECRET_VALUES = "/^env-secret-[0-9]+$/";
+      process.env.SMCP_EXCLUDE_SECRET_KEYS = "ALLOWLISTED_KEY";
+
+      expect(isSecretKey("ENV_CONFIDENTIAL_A")).toBe(true);
+      expect(isSecretKey("MY_SPECIAL_HASH")).toBe(true);
+      expect(isSecretValue("env-secret-456")).toBe(true);
+      expect(isSecretKey("ALLOWLISTED_KEY")).toBe(false);
+    } finally {
+      if (origKeys !== undefined) process.env.SMCP_EXTRA_SECRET_KEYS = origKeys;
+      else delete process.env.SMCP_EXTRA_SECRET_KEYS;
+
+      if (origValues !== undefined) process.env.SMCP_EXTRA_SECRET_VALUES = origValues;
+      else delete process.env.SMCP_EXTRA_SECRET_VALUES;
+
+      if (origExclude !== undefined) process.env.SMCP_EXCLUDE_SECRET_KEYS = origExclude;
+      else delete process.env.SMCP_EXCLUDE_SECRET_KEYS;
+    }
+  });
+
+  it("redacts MCP servers using extraKeyPatterns, extraValuePatterns, and excludeKeyPatterns", () => {
+    const servers: Record<string, McpServerConfig> = {
+      customService: {
+        command: "run-service",
+        args: ["--token", "mycorp-val-12345"],
+        env: {
+          CORP_APP_SIGNATURE: "plain-signature",
+          PUBLIC_KEY_CONF: "not-a-secret"
+        }
+      }
+    };
+
+    const { redactedServers, requiredEnv } = redactMcpServers(servers, {
+      extraKeyPatterns: ["CORP_APP_SIGNATURE"],
+      extraValuePatterns: ["/^mycorp-val-[0-9]+$/"],
+      excludeKeyPatterns: ["PUBLIC_KEY_CONF"]
+    });
+
+    // CORP_APP_SIGNATURE is redacted
+    expect(redactedServers.customService.env?.CORP_APP_SIGNATURE).toBe("${CORP_APP_SIGNATURE}");
+    expect(requiredEnv.some(e => e.key === "CORP_APP_SIGNATURE" && e.isSecret)).toBe(true);
+
+    // PUBLIC_KEY_CONF is excluded from redaction
+    expect(redactedServers.customService.env?.PUBLIC_KEY_CONF).toBe("not-a-secret");
+    expect(requiredEnv.some(e => e.key === "PUBLIC_KEY_CONF")).toBe(false);
+
+    // mycorp-val-12345 is redacted in args
+    expect(redactedServers.customService.args?.[1]).toBe("${CUSTOMSERVICE_API_KEY}");
+    expect(requiredEnv.some(e => e.key === "CUSTOMSERVICE_API_KEY" && e.isSecret)).toBe(true);
+  });
+
+  describe("Command String & Array Redaction and Flag Parsing (SEC-01)", () => {
+    it("redacts credentials and secret flags in command strings", () => {
+      const servers: Record<string, McpServerConfig> = {
+        context7: {
+          command: "bunx -y @upstash/context7-mcp --api-key ctx7sk-a57aa5ff-d79b-4ada-8e3d-96755c5cc6a9"
+        },
+        postgres: {
+          command: "npx @modelcontextprotocol/server-postgres postgresql://user:secret123@db.internal:5432/prod"
+        },
+        customApp: {
+          command: "node server.js --token=mysecrettoken"
+        }
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+      expect(redactedServers.context7.command).toContain("--api-key ${CONTEXT7_API_KEY}");
+      expect(redactedServers.postgres.command).toBe("npx @modelcontextprotocol/server-postgres ${POSTGRES_DATABASE_URL}");
+      expect(redactedServers.customApp.command).toBe("node server.js --token=${CUSTOMAPP_TOKEN}");
+
+      expect(requiredEnv.some((e) => e.key === "CONTEXT7_API_KEY" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "POSTGRES_DATABASE_URL" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "CUSTOMAPP_TOKEN" && e.isSecret)).toBe(true);
+    });
+
+    it("redacts array command format (OpenCode schema)", () => {
+      const servers: Record<string, McpServerConfig> = {
+        openCodeServer: {
+          command: [
+            "bunx",
+            "-y",
+            "@upstash/context7-mcp",
+            "--api-key",
+            "ctx7sk-a57aa5ff-d79b-4ada-8e3d-96755c5cc6a9"
+          ] as any
+        }
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(servers);
+      const cmd = (redactedServers.openCodeServer.command as unknown) as string[];
+      expect(cmd[3]).toBe("--api-key");
+      expect(cmd[4]).toBe("${OPENCODESERVER_API_KEY}");
+      expect(requiredEnv.some((e) => e.key === "OPENCODESERVER_API_KEY" && e.isSecret)).toBe(true);
+    });
+
+    it("redacts --flag=value and paired flag arguments in args array", () => {
+      const servers: Record<string, McpServerConfig> = {
+        flagService: {
+          command: "node",
+          args: [
+            "--api-key=sk-proj-123456789012345678901234567890",
+            "--password",
+            "arbitraryCustomSecret123",
+            "--safe-flag=visible",
+            "--unrelated",
+            "safe-arg"
+          ]
+        }
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(servers);
+      const args = redactedServers.flagService.args!;
+
+      expect(args[0]).toBe("--api-key=${FLAGSERVICE_API_KEY}");
+      expect(args[1]).toBe("--password");
+      expect(args[2]).toBe("${FLAGSERVICE_API_KEY_2}");
+      expect(args[3]).toBe("--safe-flag=visible");
+      expect(args[4]).toBe("--unrelated");
+      expect(args[5]).toBe("safe-arg");
+
+      expect(requiredEnv.some((e) => e.key === "FLAGSERVICE_API_KEY" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "FLAGSERVICE_API_KEY_2" && e.isSecret)).toBe(true);
+    });
   });
 });

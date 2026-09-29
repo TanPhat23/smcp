@@ -7,7 +7,7 @@ import path from "node:path";
 import { createProgram } from "../src/cli.ts";
 import { inspectCommand } from "../src/commands/inspect.ts";
 import { GitHubClient } from "../src/core/github.ts";
-import type { Manifest } from "../src/types.ts";
+import type { Manifest } from "../src/types/index.ts";
 
 describe("CLI Commander Wiring & Inspect Command", () => {
   let testDir: string;
@@ -41,10 +41,14 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(shareCmd?.aliases()).toContain("export");
 
       const options = shareCmd?.options.map((o) => o.flags) || [];
+      expect(options.some((f) => f.includes("-P") && f.includes("--provider"))).toBe(true);
+      expect(options.some((f) => f.includes("-R") && f.includes("--repo"))).toBe(true);
+      expect(options.some((f) => f.includes("--branch"))).toBe(true);
       expect(options.some((f) => f.includes("-o") && f.includes("--output"))).toBe(true);
       expect(options.some((f) => f.includes("-a") && f.includes("--agents"))).toBe(true);
       expect(options.some((f) => f.includes("-s") && f.includes("--servers"))).toBe(true);
       expect(options.some((f) => f.includes("-k") && f.includes("--skills"))).toBe(true);
+      expect(options.some((f) => f.includes("-p") && f.includes("--plugins"))).toBe(true);
     });
 
     it("wires up install command with add alias and options", () => {
@@ -56,6 +60,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       const options = installCmd?.options.map((o) => o.flags) || [];
       expect(options.some((f) => f.includes("-a") && f.includes("--agents"))).toBe(true);
       expect(options.some((f) => f.includes("-f") && f.includes("--force"))).toBe(true);
+      expect(options.some((f) => f.includes("--plugin-dir"))).toBe(true);
     });
 
     it("wires up inspect command with info alias", () => {
@@ -65,11 +70,16 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(inspectCmd?.aliases()).toContain("info");
     });
 
-    it("wires up list command with ls alias", () => {
+    it("wires up list command with ls alias and options", () => {
       const program = createProgram();
       const listCmd = program.commands.find((c) => c.name() === "list");
       expect(listCmd).toBeDefined();
       expect(listCmd?.aliases()).toContain("ls");
+
+      const options = listCmd?.options.map((o) => o.flags) || [];
+      expect(options.some((f) => f.includes("-a") && f.includes("--agents"))).toBe(true);
+      expect(options.some((f) => f.includes("-s") && f.includes("--settings"))).toBe(true);
+      expect(options.some((f) => f.includes("-v") && f.includes("--verbose"))).toBe(true);
     });
 
     it("wires up auth subcommands (login, logout, status)", () => {
@@ -83,7 +93,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(subcommands).toContain("status");
     });
 
-    it("wires up agent subcommands (list with ls alias, add)", () => {
+    it("wires up agent subcommands (list with ls alias, add, install-skill)", () => {
       const program = createProgram();
       const agentCmd = program.commands.find((c) => c.name() === "agent");
       expect(agentCmd).toBeDefined();
@@ -91,9 +101,20 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       const subcommands = agentCmd?.commands.map((c) => c.name()) || [];
       expect(subcommands).toContain("list");
       expect(subcommands).toContain("add");
+      expect(subcommands).toContain("install-skill");
 
       const listSub = agentCmd?.commands.find((c) => c.name() === "list");
       expect(listSub?.aliases()).toContain("ls");
+    });
+
+    it("wires up instructions command with usage alias", () => {
+      const program = createProgram();
+      const instCmd = program.commands.find((c) => c.name() === "instructions");
+      expect(instCmd).toBeDefined();
+      expect(instCmd?.aliases()).toContain("usage");
+
+      const options = instCmd?.options.map((o) => o.flags) || [];
+      expect(options.some((f) => f.includes("--json"))).toBe(true);
     });
   });
 
@@ -234,7 +255,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
     });
 
     it("handles shareCommand with agents option filtering", async () => {
-      const { shareCommand } = await import("../src/commands/share.ts");
+      const { shareCommand } = await import("../src/commands/share/index.ts");
       let cancelMsg = "";
       const spyCancel = spyOn(p, "cancel").mockImplementation((msg) => {
         cancelMsg = String(msg);
@@ -391,6 +412,104 @@ describe("CLI Commander Wiring & Inspect Command", () => {
         "utf8"
       );
       expect(installedSkillDoc).toContain("# E2E Skill");
+    });
+
+    it("executes end-to-end export, inspect, and install workflow for plugins via CLI binary", () => {
+      const e2eDir = path.join(testDir, "e2e-plugin-workflow");
+      const srcEnv = path.join(e2eDir, "src-env");
+      const targetEnv = path.join(e2eDir, "target-env");
+      const packDir = path.join(e2eDir, "exported-plugin-pack");
+
+      fs.mkdirSync(path.join(srcEnv, "plugin"), { recursive: true });
+      fs.mkdirSync(targetEnv, { recursive: true });
+
+      // Create source OpenCode config and plugin file
+      fs.writeFileSync(
+        path.join(srcEnv, "opencode.json"),
+        JSON.stringify({
+          plugin: ["opencode-gemini-auth@latest", "./plugin/custom-tool.ts"]
+        }),
+        "utf8"
+      );
+      fs.writeFileSync(
+        path.join(srcEnv, "plugin", "custom-tool.ts"),
+        "export default { name: 'custom-tool' };\n",
+        "utf8"
+      );
+
+      const isolatedSmcpDir = path.join(e2eDir, "smcp-state");
+
+      // 1. Export pack with plugins
+      const exportOutput = execSync(
+        `node "${binSmcp}" share -o "${packDir}" -p opencode-gemini-auth@latest -p ./plugin/custom-tool.ts -y`,
+        {
+          cwd: srcEnv,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            SMCP_DIR: isolatedSmcpDir
+          }
+        }
+      );
+      expect(exportOutput).toContain("Pack successfully exported");
+
+      // Verify smcp.json manifest contains plugins
+      const manifestPath = path.join(packDir, "smcp.json");
+      expect(fs.existsSync(manifestPath)).toBe(true);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      expect(manifest.plugins).toBeDefined();
+      expect(manifest.plugins.some((p: any) => (typeof p === "string" ? p : p.name).includes("opencode-gemini-auth"))).toBe(true);
+      expect(manifest.plugins.some((p: any) => (typeof p === "string" ? p : p.name).includes("custom-tool"))).toBe(true);
+
+      // 2. Inspect pack via CLI
+      const inspectJson = execSync(`node "${binSmcp}" inspect "${packDir}" --json`, {
+        cwd: smcpRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          SMCP_DIR: isolatedSmcpDir
+        }
+      });
+      const parsedInspect = JSON.parse(inspectJson);
+      expect(parsedInspect.manifest.plugins).toBeDefined();
+      expect(parsedInspect.manifest.plugins.length).toBeGreaterThanOrEqual(1);
+
+      // 3. Install pack into target environment with custom plugin directory
+      fs.writeFileSync(
+        path.join(targetEnv, "opencode.json"),
+        JSON.stringify({ plugin: ["existing-plugin"] }),
+        "utf8"
+      );
+
+      const targetCustomPluginDir = path.join(targetEnv, "installed-plugins");
+
+      const installOutput = execSync(
+        `node "${binSmcp}" install "${packDir}" -a opencode --plugin-dir "${targetCustomPluginDir}" -f -y --json`,
+        {
+          cwd: targetEnv,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            SMCP_DIR: isolatedSmcpDir,
+            CONTEXT7_API_KEY: "test-ctx7-key"
+          }
+        }
+      );
+      const parsedInstall = JSON.parse(installOutput);
+      expect(parsedInstall.success).toBe(true);
+      expect(parsedInstall.installedPlugins).toBeDefined();
+
+      // 4. Verify target environment config and installed plugin files
+      const targetConfig = JSON.parse(fs.readFileSync(path.join(targetEnv, "opencode.json"), "utf8"));
+      expect(targetConfig.plugin).toContain("existing-plugin");
+      expect(targetConfig.plugin.some((p: string) => p.includes("opencode-gemini-auth"))).toBe(true);
+      expect(targetConfig.plugin.some((p: string) => p.includes("custom-tool"))).toBe(true);
+
+      expect(
+        fs.existsSync(path.join(targetCustomPluginDir, "custom-tool.ts")) ||
+        fs.existsSync(path.join(targetCustomPluginDir, "custom-tool", "custom-tool.ts")) ||
+        fs.existsSync(path.join(targetCustomPluginDir, "index.ts"))
+      ).toBe(true);
     });
   });
 });
