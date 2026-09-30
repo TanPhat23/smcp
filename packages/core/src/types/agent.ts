@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const AgentProfileSchema = z.object({
-  name: z.string(),
+  name: z.string().trim().min(1, "Agent name must be a non-empty string"),
   mcpConfig: z
     .object({
       paths: z.array(z.string()),

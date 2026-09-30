@@ -1,14 +1,15 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { detectAgents, installSkillFiles } from "@tanphat/smcp-core";
+import { detectAgents, installSkillFiles, type AgentProfile } from "@tanphat/smcp-core";
 import { SMCP_AGENT_SKILL_CONTENT } from "../instructions.ts";
 
 export interface AgentInstallSkillCommandOptions {
   json?: boolean;
+  profiles?: Record<string, AgentProfile>;
 }
 
 export function agentInstallSkillCommand(options?: AgentInstallSkillCommandOptions): void {
-  const detected = detectAgents();
+  const detected = detectAgents(options?.profiles);
   const installedTo: string[] = [];
 
   for (const agent of detected) {

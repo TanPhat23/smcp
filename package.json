@@ -10,6 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/TanPhat23/smcp.git"
   },
+  "license": "MIT",
   "author": "TanPhat23",
   "scripts": {
     "dev": "bun run packages/cli/src/cli.ts",

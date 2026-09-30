@@ -23,6 +23,19 @@ function urlContainsCredentials(url: string, options?: RedactorOptions): boolean
         return true;
       }
     }
+    // Inspect hash fragment (e.g. OAuth tokens #token=ghp_... or #access_token=...)
+    if (parsed.hash && parsed.hash.length > 1) {
+      try {
+        const hashParams = new URLSearchParams(parsed.hash.slice(1));
+        for (const [paramKey, paramVal] of hashParams.entries()) {
+          if (isSecretKey(paramKey, options) || isSecretValue(paramVal, options)) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore hash parsing errors
+      }
+    }
   } catch {
     // If not a valid standard URL, fallback to connection string pattern
     if (CONNECTION_STRING_PATTERN.test(url)) {
@@ -99,9 +112,10 @@ export function redactMcpServers(
         setRequiredEnv(envKey, `Connection string for ${serverName}`, true);
       }
 
-      // Check for --flag=value patterns inside command string
-      const flagEqRegex = /(--[a-zA-Z0-9_-]+)=([^\s"']+)/g;
-      cmdStr = cmdStr.replace(flagEqRegex, (match, flag, val) => {
+      // Check for --flag=value patterns inside command string (supporting quotes)
+      const flagEqRegex = /(--[a-zA-Z0-9_-]+)=(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g;
+      cmdStr = cmdStr.replace(flagEqRegex, (match, flag, valDouble, valSingle, valBare) => {
+        const val = valDouble ?? valSingle ?? valBare ?? "";
         const cleanFlag = flag.replace(/^--/, "");
         if (isSecretKey(cleanFlag, options) || isSecretValue(val, options)) {
           const baseKey = `${safePrefix}_${cleanFlag.toUpperCase().replace(/[^A-Z0-9_]/g, "_")}`;
@@ -112,9 +126,10 @@ export function redactMcpServers(
         return match;
       });
 
-      // Check for --flag value space-separated pairs
-      const flagSpaceRegex = /(--[a-zA-Z0-9_-]+)\s+([^\s"']+)/g;
-      cmdStr = cmdStr.replace(flagSpaceRegex, (match, flag, val) => {
+      // Check for --flag value space-separated pairs (supporting quotes)
+      const flagSpaceRegex = /(--[a-zA-Z0-9_-]+)\s+(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g;
+      cmdStr = cmdStr.replace(flagSpaceRegex, (match, flag, valDouble, valSingle, valBare) => {
+        const val = valDouble ?? valSingle ?? valBare ?? "";
         const cleanFlag = flag.replace(/^--/, "");
         if (
           !val.startsWith("-") &&

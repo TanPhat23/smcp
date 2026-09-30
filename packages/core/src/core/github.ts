@@ -166,6 +166,14 @@ export async function formatApiError(errOrRes: unknown, defaultMsg: string): Pro
     return `${defaultMsg}: ${errOrRes.message}`;
   }
 
+  if (typeof errOrRes === "string") {
+    return `${defaultMsg}: ${errOrRes}`;
+  }
+
+  if (errOrRes === null || errOrRes === undefined || typeof errOrRes !== "object") {
+    return `${defaultMsg}: ${String(errOrRes)}`;
+  }
+
   const { status, statusText = "", data } = await parseResponseBody(errOrRes);
   const detail = extractErrorDetail(data) || statusText;
 
