@@ -33,14 +33,37 @@ const DEFAULT_IGNORED_EXTENSIONS = new Set<string>();
 const DEFAULT_IGNORED_SEGMENTS = new Set<string>();
 const DEFAULT_IGNORED_PATHS: string[] = [];
 
-for (const pattern of DEFAULT_IGNORE_PATTERNS) {
-  if (pattern.startsWith("*.")) {
-    DEFAULT_IGNORED_EXTENSIONS.add(pattern.slice(1));
-  } else if (pattern.includes("/")) {
-    DEFAULT_IGNORED_PATHS.push(pattern);
-  } else {
-    DEFAULT_IGNORED_SEGMENTS.add(pattern);
+function categorizePattern(
+  rawPattern: string,
+  extensions: Set<string>,
+  segments: Set<string>,
+  paths: string[]
+): void {
+  const cleaned = rawPattern.trim().replaceAll("\\", "/");
+  if (!cleaned) return;
+
+  if (cleaned.startsWith("*.")) {
+    extensions.add(cleaned.slice(1));
+    return;
   }
+
+  const normalized = cleaned.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!normalized) return;
+
+  if (normalized.includes("/")) {
+    paths.push(normalized);
+  } else {
+    segments.add(normalized);
+  }
+}
+
+for (const pattern of DEFAULT_IGNORE_PATTERNS) {
+  categorizePattern(
+    pattern,
+    DEFAULT_IGNORED_EXTENSIONS,
+    DEFAULT_IGNORED_SEGMENTS,
+    DEFAULT_IGNORED_PATHS
+  );
 }
 
 const BINARY_EXTENSIONS = new Set([
@@ -89,13 +112,7 @@ export function isIgnoredPath(relPath: string, customIgnores?: string[]): boolea
     ignoredPaths = [...DEFAULT_IGNORED_PATHS];
 
     for (const pattern of customIgnores) {
-      if (pattern.startsWith("*.")) {
-        ignoredExtensions.add(pattern.slice(1));
-      } else if (pattern.includes("/")) {
-        ignoredPaths.push(pattern);
-      } else {
-        ignoredSegments.add(pattern);
-      }
+      categorizePattern(pattern, ignoredExtensions, ignoredSegments, ignoredPaths);
     }
   }
 
@@ -178,7 +195,8 @@ export async function collectDirectoryFilesAsync(
 ): Promise<Record<string, string>> {
   const resolvedRoot = path.resolve(rootDir);
   const maxFileSize = options?.maxFileSize ?? 2 * 1024 * 1024;
-  const limiter = pLimit(options?.concurrency ?? 16);
+  const concurrency = Math.max(1, options?.concurrency ?? 16);
+  const limiter = pLimit(concurrency);
   const result: Record<string, string> = {};
 
   if (!fs.existsSync(resolvedRoot)) {

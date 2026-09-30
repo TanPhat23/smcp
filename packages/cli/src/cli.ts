@@ -216,14 +216,12 @@ export async function runCli(args: string[] = process.argv): Promise<void> {
 }
 
 const isDirectRun =
-  Boolean((import.meta as any).main) ||
+  (typeof Bun !== "undefined" && Boolean((import.meta as any).main)) ||
   (typeof process !== "undefined" &&
     process.argv[1] &&
-    (process.argv[1].endsWith("smcp.js") ||
-      process.argv[1].endsWith("smcp") ||
-      process.argv[1].endsWith("cli.js") ||
-      process.argv[1].endsWith("cli.ts")) &&
-    !process.argv[1].includes("test"));
+    (process.argv[1].endsWith("cli.ts") || process.argv[1].endsWith("/cli.js")) &&
+    !process.argv[1].includes("test") &&
+    !process.argv[1].includes("node_modules"));
 
 if (isDirectRun) {
   runCli();

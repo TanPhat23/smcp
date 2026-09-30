@@ -314,6 +314,20 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(output).toContain("Usage: smcp [options] [command]");
     });
 
+    it("imports dist/cli.js in Node.js ESM without process side effects", () => {
+      const distCliPath = path.join(smcpRoot, "packages/cli/dist/cli.js");
+      if (fs.existsSync(distCliPath)) {
+        const output = execSync(
+          `node -e 'import("${distCliPath}").then((m) => console.log("IMPORTED:" + typeof m.runCli))'`,
+          {
+            cwd: smcpRoot,
+            encoding: "utf8"
+          }
+        );
+        expect(output.trim()).toBe("IMPORTED:function");
+      }
+    });
+
     it("executes end-to-end export, inspect, and install workflow via CLI binary", () => {
       const e2eDir = path.join(testDir, "e2e-workflow");
       const srcEnv = path.join(e2eDir, "src-env");

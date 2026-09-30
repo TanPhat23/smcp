@@ -19,7 +19,11 @@
       "import": "./dist/core.js",
       "default": "./dist/core.js"
     },
-    "./cli": "./dist/cli.js"
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
+    }
   },
   "files": [
     "bin",
