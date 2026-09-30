@@ -7,21 +7,23 @@
         "@clack/prompts": "^0.10.0",
         "@types/bun": "latest",
         "@types/node": "^22.13.0",
+        "@types/write-file-atomic": "^4.0.3",
         "axios": "^1.20.0",
         "commander": "^13.1.0",
         "picocolors": "^1.1.1",
         "typescript": "^5.7.3",
+        "write-file-atomic": "^8.0.0",
       },
     },
     "packages/cli": {
-      "name": "smcp",
-      "version": "0.1.2",
+      "name": "@tanphat/smcp",
+      "version": "0.1.4",
       "bin": {
         "smcp": "bin/smcp.js",
       },
       "dependencies": {
         "@clack/prompts": "^0.10.0",
-        "@tanphat/smcp-core": "^0.1.2",
+        "@tanphat/smcp-core": "^0.1.4",
         "commander": "^13.1.0",
         "picocolors": "^1.1.1",
         "zod": "^3.24.2",
@@ -34,14 +36,16 @@
     },
     "packages/core": {
       "name": "@tanphat/smcp-core",
-      "version": "0.1.2",
+      "version": "0.1.4",
       "dependencies": {
         "axios": "^1.20.0",
+        "write-file-atomic": "^8.0.0",
         "zod": "^3.24.2",
       },
       "devDependencies": {
         "@types/bun": "latest",
         "@types/node": "^22.13.0",
+        "@types/write-file-atomic": "^4.0.3",
         "typescript": "^5.7.3",
       },
     },
@@ -51,11 +55,15 @@
 
     "@clack/prompts": ["@clack/prompts@0.10.1", "", { "dependencies": { "@clack/core": "0.4.2", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-Q0T02vx8ZM9XSv9/Yde0jTmmBQufZhPJfYAg2XrrrxWWaZgq1rr8nU8Hv710BQ1dhoP8rtY7YUdpGej2Qza/cw=="],
 
+    "@tanphat/smcp": ["@tanphat/smcp@workspace:packages/cli"],
+
     "@tanphat/smcp-core": ["@tanphat/smcp-core@workspace:packages/core"],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
     "@types/node": ["@types/node@22.20.4", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA=="],
+
+    "@types/write-file-atomic": ["@types/write-file-atomic@4.0.3", "", { "dependencies": { "@types/node": "*" } }, "sha512-qdo+vZRchyJIHNeuI1nrpsLw+hnkgqP/8mlaN6Wle/NKhydHmUN9l4p3ZE8yP90AJNJW4uB8HQhedb4f1vNayQ=="],
 
     "agent-base": ["agent-base@6.0.2", "", { "dependencies": { "debug": "4" } }, "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ=="],
 
@@ -117,13 +125,15 @@
 
     "proxy-from-env": ["proxy-from-env@2.1.0", "", {}, "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA=="],
 
-    "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
+    "signal-exit": ["signal-exit@4.1.0", "", {}, "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw=="],
 
-    "smcp": ["smcp@workspace:packages/cli"],
+    "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+
+    "write-file-atomic": ["write-file-atomic@8.0.0", "", { "dependencies": { "signal-exit": "^4.0.1" } }, "sha512-dYwyZredl67GyLLIHJnRM3h2PcOmN5SkcgC7eM5DPDEOEl6dLFqVrMg3F1Ea32usj4VSVZtd2H4MtKTNOf6nPg=="],
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
   }

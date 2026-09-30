@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import writeFileAtomic from "write-file-atomic";
 
 export interface AtomicWriteOptions {
   mode?: number;
+  chown?: { uid: number; gid: number };
+  encoding?: BufferEncoding;
+  fsync?: boolean;
 }
 
 export const DEFAULT_IGNORE_PATTERNS: string[] = [
@@ -270,52 +274,7 @@ export async function atomicWriteFileAsync(
   if (!fs.existsSync(dir)) {
     await fsp.mkdir(dir, { recursive: true });
   }
-  const tempFile = path.join(
-    dir,
-    `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
-  );
-
-  let targetMode = options?.mode;
-  if (targetMode === undefined && fs.existsSync(filePath)) {
-    try {
-      const s = await fsp.stat(filePath);
-      targetMode = s.mode & 0o777;
-    } catch {
-      targetMode = undefined;
-    }
-  }
-
-  try {
-    if (targetMode !== undefined) {
-      await fsp.writeFile(tempFile, content, { mode: targetMode });
-      try {
-        await fsp.chmod(tempFile, targetMode);
-      } catch {
-        // Non-POSIX platforms
-      }
-    } else {
-      await fsp.writeFile(tempFile, content, "utf8");
-    }
-
-    await fsp.rename(tempFile, filePath);
-
-    if (targetMode !== undefined) {
-      try {
-        await fsp.chmod(filePath, targetMode);
-      } catch {
-        // Non-POSIX platforms
-      }
-    }
-  } catch (error) {
-    try {
-      if (fs.existsSync(tempFile)) {
-        await fsp.unlink(tempFile);
-      }
-    } catch {
-      // Ignore cleanup error
-    }
-    throw error;
-  }
+  await writeFileAtomic(filePath, content, options);
 }
 
 export function atomicWriteFileSync(
@@ -327,49 +286,5 @@ export function atomicWriteFileSync(
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const tempFile = path.join(
-    dir,
-    `.${path.basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
-  );
-
-  let targetMode = options?.mode;
-  if (targetMode === undefined && fs.existsSync(filePath)) {
-    try {
-      targetMode = fs.statSync(filePath).mode & 0o777;
-    } catch {
-      targetMode = undefined;
-    }
-  }
-
-  try {
-    if (targetMode !== undefined) {
-      fs.writeFileSync(tempFile, content, { mode: targetMode });
-      try {
-        fs.chmodSync(tempFile, targetMode);
-      } catch {
-        // Non-POSIX platforms
-      }
-    } else {
-      fs.writeFileSync(tempFile, content, "utf8");
-    }
-
-    fs.renameSync(tempFile, filePath);
-
-    if (targetMode !== undefined) {
-      try {
-        fs.chmodSync(filePath, targetMode);
-      } catch {
-        // Non-POSIX platforms
-      }
-    }
-  } catch (error) {
-    try {
-      if (fs.existsSync(tempFile)) {
-        fs.unlinkSync(tempFile);
-      }
-    } catch {
-      // Ignore cleanup error
-    }
-    throw error;
-  }
+  writeFileAtomic.sync(filePath, content, options);
 }
