@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { detectAgents, installSkillFiles } from "@smcp/core";
+import { detectAgents, installSkillFiles } from "@tanphat/core";
 import { SMCP_AGENT_SKILL_CONTENT } from "../instructions.ts";
 
 export interface AgentInstallSkillCommandOptions {

@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { getAuthConfig, GitHubClient, hashObject, recordShare } from "@smcp/core";
+import { getAuthConfig, GitHubClient, hashObject, recordShare } from "@tanphat/core";
 import { authLoginCommand } from "../../auth/login.ts";
 import type { ShareProvider, ShareProviderContext } from "./types.ts";
 

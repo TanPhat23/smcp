@@ -7,7 +7,7 @@ import {
   type PluginEntry,
   type PluginObjectEntry,
   type SkillEntry
-} from "@smcp/core";
+} from "@tanphat/core";
 
 export function bundleSkillFiles(skills: SkillEntry[]): {
   bundledSkills: SkillEntry[];

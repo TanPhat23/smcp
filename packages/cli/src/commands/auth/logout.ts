@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { clearProviderAuth } from "@smcp/core";
+import { clearProviderAuth } from "@tanphat/core";
 
 export function authLogoutCommand(provider = "github"): void {
   clearProviderAuth(provider);

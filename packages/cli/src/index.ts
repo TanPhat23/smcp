@@ -1,2 +1,2 @@
-export * from "@smcp/core";
+export * from "@tanphat/core";
 export * from "./commands/index.ts";

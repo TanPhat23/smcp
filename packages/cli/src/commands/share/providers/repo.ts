@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import path from "node:path";
-import { generatePackReadme, getAuthConfig, GitHubClient, hashObject, recordShare } from "@smcp/core";
+import { generatePackReadme, getAuthConfig, GitHubClient, hashObject, recordShare } from "@tanphat/core";
 import { authLoginCommand } from "../../auth/login.ts";
 import { GistShareProvider } from "./gist.ts";
 import { LocalShareProvider } from "./local.ts";

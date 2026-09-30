@@ -8,7 +8,7 @@ import {
   type AgentProfile,
   type Manifest,
   type McpServerConfig
-} from "@smcp/core";
+} from "@tanphat/core";
 import { extractPluginFiles, extractSkillFiles } from "./extract.ts";
 
 export { resolveActiveAgentPath };

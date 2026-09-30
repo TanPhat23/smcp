@@ -7,7 +7,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "paths": {
-      "@smcp/core": ["../core/dist/index.d.ts"]
+      "@tanphat/core": ["../core/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"]

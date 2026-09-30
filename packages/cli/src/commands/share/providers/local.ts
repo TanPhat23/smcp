@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import path from "node:path";
-import { hashObject, recordShare } from "@smcp/core";
+import { hashObject, recordShare } from "@tanphat/core";
 import { exportPackLocally } from "../export.ts";
 import type { ShareProvider, ShareProviderContext } from "./types.ts";
 

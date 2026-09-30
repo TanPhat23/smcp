@@ -1,1 +1,1 @@
-export * from "@smcp/core";
+export * from "@tanphat/core";

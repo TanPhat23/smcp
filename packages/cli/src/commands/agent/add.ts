@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { isPrototypePollutionKey, saveCustomAgent } from "@smcp/core";
+import { isPrototypePollutionKey, saveCustomAgent } from "@tanphat/core";
 
 export async function agentAddCommand(): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" smcp — Register Custom Agent ")));

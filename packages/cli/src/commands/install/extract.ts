@@ -5,7 +5,7 @@ import {
   isStrictlyInside,
   type PluginEntry,
   type SkillEntry
-} from "@smcp/core";
+} from "@tanphat/core";
 
 export function extractSkillFiles(
   skill: SkillEntry,

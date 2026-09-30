@@ -17,8 +17,8 @@
     "allowJs": true,
     "types": ["@types/bun", "@types/node"],
     "paths": {
-      "@smcp/core": ["./packages/core/src/index.ts"],
-      "@smcp/core/*": ["./packages/core/src/*"],
+      "@tanphat/core": ["./packages/core/src/index.ts"],
+      "@tanphat/core/*": ["./packages/core/src/*"],
       "smcp": ["./packages/cli/src/index.ts"],
       "smcp/core": ["./packages/cli/src/core.ts"]
     }

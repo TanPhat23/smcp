@@ -6,7 +6,7 @@ import {
   type Manifest,
   type PluginEntry,
   type SkillEntry
-} from "@smcp/core";
+} from "@tanphat/core";
 
 export function exportPackLocally(
   manifest: Manifest,
