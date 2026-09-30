@@ -64,7 +64,9 @@ export function mergePluginsIntoFile(
 
   if (format === "array") {
     const actualKey =
-      Array.isArray(parsed[key])
+      key === "plugins"
+        ? "plugins"
+        : Array.isArray(parsed[key])
         ? key
         : Array.isArray(parsed.plugins)
         ? "plugins"
@@ -72,10 +74,30 @@ export function mergePluginsIntoFile(
         ? "plugin"
         : key;
 
+    if (key === "plugins" && Array.isArray(parsed.plugin)) {
+      if (!Array.isArray(parsed.plugins)) {
+        parsed.plugins = [];
+      }
+      for (const p of parsed.plugin) {
+        if (typeof p === "string" && !(parsed.plugins as string[]).includes(p)) {
+          (parsed.plugins as string[]).push(p);
+        }
+      }
+      delete parsed.plugin;
+    }
+
     const existingList = Array.isArray(parsed[actualKey]) ? (parsed[actualKey] as string[]) : [];
-    const mergedList = [...existingList];
+    const isFilePlugin = (p: string) =>
+      p.endsWith(".ts") ||
+      p.endsWith(".js") ||
+      (p.includes(".ts") && (p.startsWith("./") || p.startsWith("../") || p.startsWith("/")));
+
+    const filterFiles = actualKey === "plugins";
+    const filteredExisting = filterFiles ? existingList.filter((p) => !isFilePlugin(p)) : existingList;
+    const mergedList = [...filteredExisting];
+
     for (const name of pluginNames) {
-      if (!isPrototypePollutionKey(name) && !mergedList.includes(name)) {
+      if (!isPrototypePollutionKey(name) && (!filterFiles || !isFilePlugin(name)) && !mergedList.includes(name)) {
         mergedList.push(name);
       }
     }

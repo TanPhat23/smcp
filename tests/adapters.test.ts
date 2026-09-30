@@ -180,7 +180,7 @@ describe("Hardened MCP Adapters Subsystem", () => {
       expect(adapter.matches({ format: "opencode" })).toBe(true);
       expect(adapter.matches({ targetKey: "mcp" })).toBe(true);
       expect(adapter.matches({ agentId: "opencode" })).toBe(true);
-      expect(adapter.matches({ agentId: "opencode", targetKey: "mcpServers" })).toBe(false);
+      expect(adapter.matches({ agentId: "opencode", targetKey: "mcpServers" })).toBe(true);
       expect(adapter.matches({ targetKey: "mcpServers" })).toBe(false);
     });
 

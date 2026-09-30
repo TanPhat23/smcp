@@ -109,6 +109,15 @@ export function readInstalledMcpServers(
         continue;
       }
 
+      // Ignore settings objects like timeout or other non-server configs
+      if (
+        !("command" in (serverConfig as object)) &&
+        !("url" in (serverConfig as object)) &&
+        !("type" in (serverConfig as object))
+      ) {
+        continue;
+      }
+
       result[serverName] = normalizeMcpServerConfig(serverConfig as Record<string, unknown>);
     }
 

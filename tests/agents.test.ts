@@ -39,7 +39,7 @@ describe("Agent Profiles Registry & Default Agents", () => {
   it("validates OpenCode profile paths and keys", () => {
     const opencode = DEFAULT_AGENTS.opencode;
     expect(opencode.name).toBe("OpenCode");
-    expect(opencode.mcpConfig?.key).toBe("mcpServers");
+    expect(opencode.mcpConfig?.key).toBe("mcp");
     expect(opencode.mcpConfig?.paths).toContain("~/.config/opencode/opencode.json");
     expect(opencode.mcpConfig?.paths).toContain("./opencode.json");
     expect(opencode.skills?.paths).toContain("~/.config/opencode/skills");

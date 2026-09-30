@@ -40,16 +40,19 @@ export class OpenCodeMcpAdapter implements McpAdapter {
     if (!context || typeof context !== "object") {
       return false;
     }
-    if (context.targetKey === "mcpServers") {
-      return false;
-    }
     if (context.format === "opencode") {
+      return true;
+    }
+    if (context.agentId === "opencode" || context.agentId?.includes("opencode")) {
       return true;
     }
     if (context.targetKey === "mcp") {
       return true;
     }
-    if (context.agentId === "opencode") {
+    if (context.targetKey === "mcpServers") {
+      return false;
+    }
+    if (context.filePath && /opencode\.jsonc?$/i.test(context.filePath)) {
       return true;
     }
     return false;
@@ -71,13 +74,7 @@ export class OpenCodeMcpAdapter implements McpAdapter {
       const remoteConfig: Record<string, unknown> = {
         type: "remote",
         url: serverConfig.url.trim(),
-        ...baseExisting,
-        enabled:
-          typeof serverConfig.enabled === "boolean"
-            ? serverConfig.enabled
-            : typeof baseExisting.enabled === "boolean"
-              ? baseExisting.enabled
-              : true
+        ...baseExisting
       };
 
       const headers = sanitizeRecord(serverConfig.headers || baseExisting.headers);
@@ -85,10 +82,41 @@ export class OpenCodeMcpAdapter implements McpAdapter {
         remoteConfig.headers = headers;
       }
 
+      if (serverConfig.oauth !== undefined) {
+        remoteConfig.oauth = serverConfig.oauth;
+      }
+
+      if (serverConfig.timeout !== undefined) {
+        remoteConfig.timeout = serverConfig.timeout;
+      }
+
+      if (serverConfig.codemode !== undefined) {
+        remoteConfig.codemode = serverConfig.codemode;
+      }
+
+      if (
+        serverConfig.disabled === true ||
+        serverConfig.enabled === false ||
+        baseExisting.disabled === true
+      ) {
+        remoteConfig.disabled = true;
+        delete remoteConfig.enabled;
+      } else {
+        if (serverConfig.disabled === false) {
+          delete remoteConfig.disabled;
+        }
+        remoteConfig.enabled = true;
+      }
+
       delete remoteConfig.command;
       delete remoteConfig.args;
       delete remoteConfig.env;
       delete remoteConfig.environment;
+      if (_context?.agentId === "opencode") {
+        delete remoteConfig.enabled;
+      } else {
+        remoteConfig.enabled = true;
+      }
 
       return cleanObjectWithoutPrototype(remoteConfig);
     }
@@ -102,12 +130,18 @@ export class OpenCodeMcpAdapter implements McpAdapter {
         }
       }
     } else if (typeof serverConfig.command === "string" && serverConfig.command.trim()) {
-      cmdArray.push(serverConfig.command.trim());
-      if (Array.isArray(serverConfig.args)) {
+      const trimmedCmd = serverConfig.command.trim();
+      if (Array.isArray(serverConfig.args) && serverConfig.args.length > 0) {
+        cmdArray.push(trimmedCmd);
         for (const arg of serverConfig.args) {
           if (arg !== null && arg !== undefined && typeof arg !== "object") {
             cmdArray.push(String(arg));
           }
+        }
+      } else {
+        const tokens = trimmedCmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [trimmedCmd];
+        for (const token of tokens) {
+          cmdArray.push(token.replace(/^["']|["']$/g, ""));
         }
       }
     }
@@ -120,13 +154,7 @@ export class OpenCodeMcpAdapter implements McpAdapter {
           : Array.isArray(baseExisting.command)
             ? (baseExisting.command as unknown[]).map(String)
             : [],
-      ...baseExisting,
-      enabled:
-        typeof serverConfig.enabled === "boolean"
-          ? serverConfig.enabled
-          : typeof baseExisting.enabled === "boolean"
-            ? baseExisting.enabled
-            : true
+      ...baseExisting
     };
 
     if (cmdArray.length > 0) {
@@ -144,10 +172,37 @@ export class OpenCodeMcpAdapter implements McpAdapter {
       localConfig.cwd = serverConfig.cwd.trim();
     }
 
-    // Strip properties forbidden by OpenCode McpLocalConfig schema
+    if (serverConfig.timeout !== undefined) {
+      localConfig.timeout = serverConfig.timeout;
+    }
+
+    if (serverConfig.codemode !== undefined) {
+      localConfig.codemode = serverConfig.codemode;
+    }
+
+    if (
+      serverConfig.disabled === true ||
+      serverConfig.enabled === false ||
+      baseExisting.disabled === true
+    ) {
+      localConfig.disabled = true;
+      delete localConfig.enabled;
+    } else {
+      if (serverConfig.disabled === false) {
+        delete localConfig.disabled;
+      }
+      localConfig.enabled = true;
+    }
+
     delete localConfig.args;
     delete localConfig.env;
     delete localConfig.url;
+
+    if (_context?.agentId === "opencode") {
+      delete localConfig.enabled;
+    } else {
+      localConfig.enabled = true;
+    }
 
     return cleanObjectWithoutPrototype(localConfig);
   }
@@ -176,6 +231,11 @@ export class OpenCodeMcpAdapter implements McpAdapter {
     const envClean = sanitizeRecord(cleaned.environment || cleaned.env);
     if (envClean) {
       result.env = envClean;
+    }
+
+    if (cleaned.disabled === true) {
+      result.disabled = true;
+      result.enabled = false;
     }
 
     return cleanObjectWithoutPrototype(result) as McpServerConfig;

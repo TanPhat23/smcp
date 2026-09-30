@@ -111,50 +111,122 @@ export function mergeMcpServersIntoFile(
     targetKey = "mcp";
   }
 
-  const existingServers = config[targetKey];
-  let serversMap: Record<string, unknown>;
+  const isV2OpenCode =
+    options.agentId === "opencode" ||
+    (typeof options.agentId === "string" && options.agentId.includes("opencode")) ||
+    options.mcpKey === "mcp.servers" ||
+    Boolean(
+      config.mcp &&
+      typeof config.mcp === "object" &&
+      !Array.isArray(config.mcp) &&
+      (config.mcp as Record<string, unknown>).servers &&
+      typeof (config.mcp as Record<string, unknown>).servers === "object" &&
+      !Array.isArray((config.mcp as Record<string, unknown>).servers)
+    );
 
-  if (
-    existingServers &&
-    typeof existingServers === "object" &&
-    !Array.isArray(existingServers)
-  ) {
-    serversMap = existingServers as Record<string, unknown>;
+  const context = {
+    filePath: writePath,
+    targetKey: isV2OpenCode ? "mcp" : targetKey,
+    format: isV2OpenCode ? "opencode" : options.format,
+    agentId: options.agentId || (isV2OpenCode ? "opencode" : undefined)
+  };
+  const adapter = getMcpAdapter(context);
+
+  if (isV2OpenCode) {
+    if (!config.mcp || typeof config.mcp !== "object" || Array.isArray(config.mcp)) {
+      config.mcp = {};
+    }
+    const mcpObj = config.mcp as Record<string, unknown>;
+    if (Object.hasOwn(mcpObj, "__proto__")) delete (mcpObj as any)["__proto__"];
+    if (Object.hasOwn(mcpObj, "constructor")) delete (mcpObj as any)["constructor"];
+    if (Object.hasOwn(mcpObj, "prototype")) delete (mcpObj as any)["prototype"];
+
+    if (!mcpObj.servers || typeof mcpObj.servers !== "object" || Array.isArray(mcpObj.servers)) {
+      mcpObj.servers = {};
+    }
+    const serversMap = mcpObj.servers as Record<string, unknown>;
     if (Object.hasOwn(serversMap, "__proto__")) delete (serversMap as any)["__proto__"];
     if (Object.hasOwn(serversMap, "constructor")) delete (serversMap as any)["constructor"];
     if (Object.hasOwn(serversMap, "prototype")) delete (serversMap as any)["prototype"];
-  } else {
-    serversMap = {};
-    config[targetKey] = serversMap;
-  }
 
-  if (newServers && typeof newServers === "object" && !Array.isArray(newServers)) {
-    for (const [serverName, serverConfig] of Object.entries(newServers)) {
-      if (isPrototypePollutionKey(serverName)) {
-        continue;
+    // Migrate any legacy mcpServers in config to mcp.servers
+    if (config.mcpServers && typeof config.mcpServers === "object" && !Array.isArray(config.mcpServers)) {
+      for (const [legacyName, legacyCfg] of Object.entries(config.mcpServers as Record<string, unknown>)) {
+        if (!isPrototypePollutionKey(legacyName) && legacyCfg && typeof legacyCfg === "object") {
+          if (!serversMap[legacyName]) {
+            const canon = adapter.deserialize(legacyCfg as Record<string, unknown>, context);
+            serversMap[legacyName] = adapter.serialize(canon, context);
+          }
+        }
       }
-      const existing = serversMap[serverName];
-      const context = {
-        filePath: writePath,
-        targetKey,
-        format: options.format,
-        agentId: options.agentId
-      };
-      const adapter = getMcpAdapter(context);
+      delete config.mcpServers;
+    }
 
-      try {
-        serversMap[serverName] = adapter.serialize(
-          serverConfig,
-          context,
-          existing
-        );
-      } catch {
-        const fallback = new StandardMcpAdapter();
-        serversMap[serverName] = fallback.serialize(
-          serverConfig,
-          context,
-          existing
-        );
+    // Migrate any legacy direct server entries under mcp to mcp.servers
+    for (const [k, v] of Object.entries(mcpObj)) {
+      if (k === "servers" || k === "timeout" || isPrototypePollutionKey(k)) continue;
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const hasServerShape = "command" in (v as object) || "url" in (v as object) || "type" in (v as object);
+        if (hasServerShape) {
+          if (!serversMap[k]) {
+            const canon = adapter.deserialize(v as Record<string, unknown>, context);
+            serversMap[k] = adapter.serialize(canon, context);
+          }
+          delete mcpObj[k];
+        }
+      }
+    }
+
+    if (newServers && typeof newServers === "object" && !Array.isArray(newServers)) {
+      for (const [serverName, serverConfig] of Object.entries(newServers)) {
+        if (isPrototypePollutionKey(serverName)) continue;
+        const existing = serversMap[serverName];
+        try {
+          serversMap[serverName] = adapter.serialize(serverConfig, context, existing);
+        } catch {
+          const fallback = new StandardMcpAdapter();
+          serversMap[serverName] = fallback.serialize(serverConfig, context, existing);
+        }
+      }
+    }
+  } else {
+    const existingServers = config[targetKey];
+    let serversMap: Record<string, unknown>;
+
+    if (
+      existingServers &&
+      typeof existingServers === "object" &&
+      !Array.isArray(existingServers)
+    ) {
+      serversMap = existingServers as Record<string, unknown>;
+      if (Object.hasOwn(serversMap, "__proto__")) delete (serversMap as any)["__proto__"];
+      if (Object.hasOwn(serversMap, "constructor")) delete (serversMap as any)["constructor"];
+      if (Object.hasOwn(serversMap, "prototype")) delete (serversMap as any)["prototype"];
+    } else {
+      serversMap = {};
+      config[targetKey] = serversMap;
+    }
+
+    if (newServers && typeof newServers === "object" && !Array.isArray(newServers)) {
+      for (const [serverName, serverConfig] of Object.entries(newServers)) {
+        if (isPrototypePollutionKey(serverName)) {
+          continue;
+        }
+        const existing = serversMap[serverName];
+        try {
+          serversMap[serverName] = adapter.serialize(
+            serverConfig,
+            context,
+            existing
+          );
+        } catch {
+          const fallback = new StandardMcpAdapter();
+          serversMap[serverName] = fallback.serialize(
+            serverConfig,
+            context,
+            existing
+          );
+        }
       }
     }
   }

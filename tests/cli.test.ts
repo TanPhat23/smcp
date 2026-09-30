@@ -30,7 +30,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
     it("configures program name, version, and description", () => {
       const program = createProgram();
       expect(program.name()).toBe("smcp");
-      expect(program.version()).toBe("0.1.5");
+      expect(program.version()).toBe("0.1.6");
       expect(program.description()).toContain("AI Agent Skills and MCP");
     });
 
@@ -298,12 +298,12 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(output).toContain("agent");
     });
 
-    it("runs node bin/smcp.js --version and outputs 0.1.5", () => {
+    it("runs node bin/smcp.js --version and outputs 0.1.6", () => {
       const output = execSync(`node "${binSmcp}" --version`, {
         cwd: smcpRoot,
         encoding: "utf8"
       });
-      expect(output.trim()).toBe("0.1.5");
+      expect(output.trim()).toBe("0.1.6");
     });
 
     it("runs bun bin/smcp.js --help and exits 0", () => {
@@ -422,11 +422,15 @@ describe("CLI Commander Wiring & Inspect Command", () => {
 
       // 4. Verify target configuration and installed files
       const targetConfig = JSON.parse(fs.readFileSync(path.join(targetEnv, "opencode.json"), "utf8"));
-      expect(targetConfig.mcpServers.existingServer).toBeDefined();
-      expect(targetConfig.mcpServers["e2e-postgres"]).toBeDefined();
-      expect(targetConfig.mcpServers["e2e-postgres"].args[2]).toBe("postgresql://prod:secret@cluster:5432/live");
-      expect(targetConfig.mcpServers["e2e-postgres"].env.API_KEY).toBe("real-prod-api-key");
-      expect(targetConfig.mcpServers["e2e-postgres"].env.APP_ENV).toBe("production");
+      const servers = targetConfig.mcp?.servers || targetConfig.mcpServers;
+      expect(servers.existingServer).toBeDefined();
+      expect(servers["e2e-postgres"]).toBeDefined();
+      const postgres = servers["e2e-postgres"];
+      const postgresArgs = Array.isArray(postgres.command) ? postgres.command : postgres.args;
+      expect(postgresArgs.some((a: string) => a.includes("postgresql://prod:secret@cluster:5432/live"))).toBe(true);
+      const postgresEnv = postgres.environment || postgres.env;
+      expect(postgresEnv.API_KEY).toBe("real-prod-api-key");
+      expect(postgresEnv.APP_ENV).toBe("production");
 
       const installedSkillDoc = fs.readFileSync(
         path.join(targetEnv, ".opencode", "skills", "e2e-skill", "SKILL.md"),
@@ -524,9 +528,11 @@ describe("CLI Commander Wiring & Inspect Command", () => {
 
       // 4. Verify target environment config and installed plugin files
       const targetConfig = JSON.parse(fs.readFileSync(path.join(targetEnv, "opencode.json"), "utf8"));
-      expect(targetConfig.plugin).toContain("existing-plugin");
-      expect(targetConfig.plugin.some((p: string) => p.includes("opencode-gemini-auth"))).toBe(true);
-      expect(targetConfig.plugin.some((p: string) => p.includes("custom-tool"))).toBe(true);
+      const pluginsList = targetConfig.plugins || targetConfig.plugin;
+      expect(pluginsList).toContain("existing-plugin");
+      expect(pluginsList.some((p: string) => p.includes("opencode-gemini-auth"))).toBe(true);
+      // In OpenCode V2, direct .ts file paths are omitted from plugins array to prevent v2.0.20 rejection
+      expect(pluginsList.some((p: string) => p.endsWith(".ts"))).toBe(false);
 
       expect(
         fs.existsSync(path.join(targetCustomPluginDir, "custom-tool.ts")) ||

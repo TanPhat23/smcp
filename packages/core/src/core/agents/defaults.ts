@@ -20,10 +20,13 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       paths: [
         "./opencode.jsonc",
         "./opencode.json",
+        ".opencode/opencode.jsonc",
+        ".opencode/opencode.json",
         "~/.config/opencode/opencode.jsonc",
         "~/.config/opencode/opencode.json"
       ],
-      key: "mcpServers"
+      key: "mcp",
+      format: "opencode"
     },
     skills: {
       paths: [
@@ -36,15 +39,16 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       paths: [
         "./opencode.jsonc",
         "./opencode.json",
+        ".opencode/opencode.jsonc",
+        ".opencode/opencode.json",
         "~/.config/opencode/opencode.jsonc",
         "~/.config/opencode/opencode.json"
       ],
-      key: "plugin",
+      key: "plugins",
       format: "array",
       dirPaths: [
-        "./plugin",
-        "./.opencode/plugin",
-        "~/.config/opencode/plugin"
+        "./.opencode/plugins",
+        "~/.config/opencode/plugins"
       ]
     }
   },
