@@ -204,7 +204,7 @@ export async function collectDirectoryFilesAsync(
     }
   }
 
-  const filePathsToRead: string[] = [];
+  const tasks: Promise<void>[] = [];
 
   async function walkDir(currentDir: string): Promise<void> {
     let entries: fs.Dirent[];
@@ -229,37 +229,34 @@ export async function collectDirectoryFilesAsync(
         if (BINARY_EXTENSIONS.has(ext)) {
           continue;
         }
-        filePathsToRead.push(fullPath);
+
+        // Pipelined: dispatch file reading immediately while walkDir continues traversing
+        tasks.push(
+          limiter(async () => {
+            try {
+              const fileStat = await fsp.stat(fullPath);
+              if (fileStat.size > maxFileSize) {
+                return;
+              }
+
+              const buf = await fsp.readFile(fullPath);
+              // Check for null byte indicating binary
+              if (buf.includes(0)) {
+                return;
+              }
+
+              result[relPath] = buf.toString("utf8");
+            } catch {
+              // Skip unreadable files
+            }
+          })
+        );
       }
     }
   }
 
   await walkDir(resolvedRoot);
-
-  // Read matching files concurrently
-  await Promise.all(
-    filePathsToRead.map((fullPath) =>
-      limiter(async () => {
-        try {
-          const fileStat = await fsp.stat(fullPath);
-          if (fileStat.size > maxFileSize) {
-            return;
-          }
-
-          const buf = await fsp.readFile(fullPath);
-          // Check for null byte indicating binary
-          if (buf.includes(0)) {
-            return;
-          }
-
-          const relPath = path.relative(resolvedRoot, fullPath).replaceAll("\\", "/");
-          result[relPath] = buf.toString("utf8");
-        } catch {
-          // Skip unreadable files
-        }
-      })
-    )
-  );
+  await Promise.all(tasks);
 
   return result;
 }
