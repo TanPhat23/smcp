@@ -66,7 +66,7 @@ for (const pattern of DEFAULT_IGNORE_PATTERNS) {
   );
 }
 
-const BINARY_EXTENSIONS = new Set([
+export const BINARY_EXTENSIONS = new Set([
   ".png",
   ".jpg",
   ".jpeg",

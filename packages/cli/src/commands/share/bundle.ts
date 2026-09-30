@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  BINARY_EXTENSIONS,
   collectDirectoryFilesAsync,
   hashObject,
   isStrictlyInside,
@@ -55,25 +56,57 @@ export function bundleSkillFiles(skills: SkillEntry[]): {
             }
           }
 
-          if (fs.statSync(full).isFile()) {
+          const ext = path.extname(full).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext)) {
+            continue;
+          }
+
+          let isFile = false;
+          try {
+            isFile = fs.statSync(full).isFile();
+          } catch {
+            continue;
+          }
+
+          if (isFile) {
             const rel = path.relative(skillDir, full).replaceAll("\\", "/");
             const segments = rel.split("/");
             if (segments.some((seg) => seg.startsWith("."))) {
               continue;
             }
-            const content = fs.readFileSync(full, "utf8");
-            skillFiles[rel] = content;
-            gistFiles[`skills_${sk.name}_${rel.replaceAll("/", "_")}`] = { content };
+            try {
+              const buf = fs.readFileSync(full);
+              if (buf.includes(0)) {
+                continue;
+              }
+              const content = buf.toString("utf8");
+              skillFiles[rel] = content;
+              gistFiles[`skills_${sk.name}_${rel.replaceAll("/", "_")}`] = { content };
+            } catch {
+              // Skip unreadable files
+            }
           }
         }
       }
     }
 
     if (Object.keys(skillFiles).length === 0) {
-      const content =
-        fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()
-          ? fs.readFileSync(resolvedPath, "utf8")
-          : `# ${sk.name}\n\n${sk.description || ""}\n`;
+      let content = `# ${sk.name}\n\n${sk.description || ""}\n`;
+      if (fs.existsSync(resolvedPath)) {
+        try {
+          if (fs.statSync(resolvedPath).isFile()) {
+            const ext = path.extname(resolvedPath).toLowerCase();
+            if (!BINARY_EXTENSIONS.has(ext)) {
+              const buf = fs.readFileSync(resolvedPath);
+              if (!buf.includes(0)) {
+                content = buf.toString("utf8");
+              }
+            }
+          }
+        } catch {
+          // Fallback to default markdown header
+        }
+      }
       skillFiles["SKILL.md"] = content;
       gistFiles[`skills_${sk.name}_SKILL.md`] = { content };
     }

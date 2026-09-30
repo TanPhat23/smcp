@@ -422,6 +422,38 @@ describe("Commands Implementation", () => {
       }
     });
 
+    it("bundleSkillFiles filters out binary extensions and null-byte files", () => {
+      const skillDir = path.join(testDir, "binary-skill");
+      fs.mkdirSync(path.join(skillDir, "assets"), { recursive: true });
+
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), "# Skill with binary", "utf8");
+      fs.writeFileSync(path.join(skillDir, "assets", "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      fs.writeFileSync(path.join(skillDir, "assets", "archive.zip"), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+      fs.writeFileSync(path.join(skillDir, "nullbyte.txt"), Buffer.from("hello\0world"));
+      fs.writeFileSync(path.join(skillDir, "valid.md"), "# Valid markdown", "utf8");
+
+      const skills: SkillEntry[] = [
+        {
+          name: "binary-skill",
+          path: path.join(skillDir, "SKILL.md"),
+          description: "Skill with binary assets"
+        }
+      ];
+
+      const { bundledSkills, gistFiles } = bundleSkillFiles(skills);
+      const bundled = bundledSkills[0];
+      expect(bundled).toBeDefined();
+      expect(bundled.files).toBeDefined();
+
+      expect(bundled.files?.["SKILL.md"]).toBe("# Skill with binary");
+      expect(bundled.files?.["valid.md"]).toBe("# Valid markdown");
+
+      // Binary assets and null-byte files must be omitted
+      expect(bundled.files?.["assets/logo.png"]).toBeUndefined();
+      expect(bundled.files?.["assets/archive.zip"]).toBeUndefined();
+      expect(bundled.files?.["nullbyte.txt"]).toBeUndefined();
+    });
+
     it("exportPackLocally writes smcp.json and skill files to output directory", () => {
       const outDir = path.join(testDir, "exported-pack");
       const manifest: Manifest = {

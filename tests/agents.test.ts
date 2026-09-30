@@ -614,6 +614,34 @@ describe("detectAgents()", () => {
     const detected = detectAgents(mockProfiles);
     expect(detected).toEqual([]);
   });
+
+  it("detects an agent when only pluginsDirPath directory exists", () => {
+    const pluginDir = path.join(os.tmpdir(), "smcp-plugins-only-" + Date.now());
+    fs.mkdirSync(pluginDir, { recursive: true });
+
+    try {
+      const mockProfiles: Record<string, AgentProfile> = {
+        "custom-plugin-agent": {
+          name: "Plugin Only Agent",
+          plugins: {
+            key: "plugin",
+            format: "array",
+            paths: [],
+            dirPaths: [pluginDir]
+          }
+        }
+      };
+
+      const detected = detectAgents(mockProfiles);
+      expect(detected.length).toBe(1);
+      expect(detected[0].id).toBe("custom-plugin-agent");
+      expect(detected[0].pluginsDirPath).toBe(pluginDir);
+    } finally {
+      if (fs.existsSync(pluginDir)) {
+        fs.rmSync(pluginDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 describe("readInstalledMcpServers()", () => {

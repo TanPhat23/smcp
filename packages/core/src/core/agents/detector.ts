@@ -103,7 +103,12 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
       }
     }
 
-    if (resolvedMcpPath || resolvedSkillsPath || resolvedPluginsConfigPath) {
+    if (
+      resolvedMcpPath ||
+      resolvedSkillsPath ||
+      resolvedPluginsConfigPath ||
+      resolvedPluginsDirPath
+    ) {
       detected.push({
         id,
         name: profile.name,
