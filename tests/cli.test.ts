@@ -486,6 +486,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       const inspectJson = execSync(`node "${binSmcp}" inspect "${packDir}" --json`, {
         cwd: smcpRoot,
         encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024,
         env: {
           ...process.env,
           SMCP_DIR: isolatedSmcpDir
@@ -509,6 +510,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
         {
           cwd: targetEnv,
           encoding: "utf8",
+          maxBuffer: 10 * 1024 * 1024,
           env: {
             ...process.env,
             SMCP_DIR: isolatedSmcpDir,
