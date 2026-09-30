@@ -3,7 +3,11 @@ import path from "node:path";
 import type { PluginEntry } from "../../types/index.ts";
 import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
-import { isPrototypePollutionKey } from "../../utils/security.ts";
+import {
+  containsNullByte,
+  isPrototypePollutionKey,
+  isWindowsReservedName
+} from "../../utils/security.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { isStrictlyInside } from "./helpers.ts";
 
@@ -116,8 +120,10 @@ export function installPluginFiles(
     pluginName === "." ||
     pluginName === ".." ||
     pluginName.includes("..") ||
+    containsNullByte(pluginName) ||
     path.isAbsolute(pluginName) ||
-    isPrototypePollutionKey(pluginName)
+    isPrototypePollutionKey(pluginName) ||
+    isWindowsReservedName(pluginName)
   ) {
     throw new Error(`Directory traversal attempt or invalid plugin name: ${pluginName}`);
   }
@@ -150,6 +156,10 @@ export function installPluginFiles(
 
   for (const [relPath, content] of Object.entries(files)) {
     if (isPrototypePollutionKey(relPath)) continue;
+
+    if (containsNullByte(relPath) || isWindowsReservedName(relPath)) {
+      throw new Error(`Directory traversal or dangerous filename detected in plugin file: ${relPath}`);
+    }
 
     const normalizedRel = relPath.replaceAll("\\", "/");
     if (

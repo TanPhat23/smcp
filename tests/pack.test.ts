@@ -344,6 +344,47 @@ describe("Pack Loader & Required Env Collector (src/core/pack.ts)", () => {
       expect(collected.filter((c) => c.key === "MY_TOKEN")).toHaveLength(1);
       expect(collected[0].description).toBe("Primary token");
     });
+
+    it("scans placeholders in command strings, command arrays, and remote HTTP headers", () => {
+      const manifest: Manifest = {
+        name: "headers-pack",
+        version: "1.0.0",
+        mcpServers: {
+          cmdServer: {
+            command: "npx --api-key ${CLI_SECRET}"
+          },
+          arrServer: {
+            command: ["bunx", "-y", "runner", "--token", "${ARR_TOKEN}"] as any
+          },
+          remoteServer: {
+            url: "https://mcp.api.io/sse",
+            headers: {
+              Authorization: "Bearer ${AUTH_BEARER_TOKEN}",
+              "X-Custom-Secret": "${CUSTOM_HEADER_SECRET}",
+              "Accept": "${ACCEPT_FORMAT}"
+            }
+          } as any
+        }
+      };
+
+      const collected = collectRequiredEnv(manifest);
+      const keys = collected.map((c) => c.key);
+
+      expect(keys).toContain("CLI_SECRET");
+      expect(keys).toContain("ARR_TOKEN");
+      expect(keys).toContain("AUTH_BEARER_TOKEN");
+      expect(keys).toContain("CUSTOM_HEADER_SECRET");
+      expect(keys).toContain("ACCEPT_FORMAT");
+
+      const authBearer = collected.find((c) => c.key === "AUTH_BEARER_TOKEN");
+      expect(authBearer?.isSecret).toBe(true);
+
+      const customHeader = collected.find((c) => c.key === "CUSTOM_HEADER_SECRET");
+      expect(customHeader?.isSecret).toBe(true);
+
+      const acceptFormat = collected.find((c) => c.key === "ACCEPT_FORMAT");
+      expect(acceptFormat?.isSecret).toBe(false);
+    });
   });
 
   describe("PackLoader Registry & Extensibility", () => {

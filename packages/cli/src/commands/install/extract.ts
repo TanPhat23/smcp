@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  containsNullByte,
   isPrototypePollutionKey,
   isStrictlyInside,
+  isWindowsReservedName,
   type PluginEntry,
   type SkillEntry
 } from "@tanphat/smcp-core";
@@ -19,8 +21,10 @@ export function extractSkillFiles(
     !skill.name ||
     typeof skill.name !== "string" ||
     skill.name.includes("..") ||
+    containsNullByte(skill.name) ||
     path.isAbsolute(skill.name) ||
-    isPrototypePollutionKey(skill.name)
+    isPrototypePollutionKey(skill.name) ||
+    isWindowsReservedName(skill.name)
   ) {
     return filesToInstall;
   }
@@ -28,7 +32,14 @@ export function extractSkillFiles(
   // 1. Check skill.files from manifest
   if (skill.files && typeof skill.files === "object" && !Array.isArray(skill.files)) {
     for (const [fn, cnt] of Object.entries(skill.files)) {
-      if (fn && !fn.includes("..") && !path.isAbsolute(fn) && !isPrototypePollutionKey(fn)) {
+      if (
+        fn &&
+        !fn.includes("..") &&
+        !path.isAbsolute(fn) &&
+        !containsNullByte(fn) &&
+        !isPrototypePollutionKey(fn) &&
+        !isWindowsReservedName(fn)
+      ) {
         filesToInstall[fn] = cnt;
       }
     }
@@ -49,7 +60,9 @@ export function extractSkillFiles(
           !path.isAbsolute(relName) &&
           !relName.startsWith("/") &&
           !relName.startsWith("\\") &&
-          !isPrototypePollutionKey(relName)
+          !containsNullByte(relName) &&
+          !isPrototypePollutionKey(relName) &&
+          !isWindowsReservedName(relName)
         ) {
           filesToInstall[relName] = content;
         }
@@ -119,15 +132,24 @@ export function extractPluginFiles(
     !pName ||
     typeof pName !== "string" ||
     pName.includes("..") ||
+    containsNullByte(pName) ||
     path.isAbsolute(pName) ||
-    isPrototypePollutionKey(pName)
+    isPrototypePollutionKey(pName) ||
+    isWindowsReservedName(pName)
   ) {
     return filesToInstall;
   }
 
   if (typeof plugin === "object" && plugin.files && Object.keys(plugin.files).length > 0) {
     for (const [fn, cnt] of Object.entries(plugin.files)) {
-      if (fn && !fn.includes("..") && !path.isAbsolute(fn) && !isPrototypePollutionKey(fn)) {
+      if (
+        fn &&
+        !fn.includes("..") &&
+        !path.isAbsolute(fn) &&
+        !containsNullByte(fn) &&
+        !isPrototypePollutionKey(fn) &&
+        !isWindowsReservedName(fn)
+      ) {
         filesToInstall[fn] = cnt;
       }
     }
@@ -148,7 +170,9 @@ export function extractPluginFiles(
           !path.isAbsolute(relName) &&
           !relName.startsWith("/") &&
           !relName.startsWith("\\") &&
-          !isPrototypePollutionKey(relName)
+          !containsNullByte(relName) &&
+          !isPrototypePollutionKey(relName) &&
+          !isWindowsReservedName(relName)
         ) {
           filesToInstall[relName] = content;
         }

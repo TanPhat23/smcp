@@ -779,5 +779,52 @@ describe("Extensible Secret Patterns & AI Agent API", () => {
       expect(requiredEnv.some((e) => e.key === "FLAGSERVICE_API_KEY" && e.isSecret)).toBe(true);
       expect(requiredEnv.some((e) => e.key === "FLAGSERVICE_API_KEY_2" && e.isSecret)).toBe(true);
     });
+
+    it("redacts remote MCP URLs containing tokens or keys in query parameters", () => {
+      const servers: Record<string, McpServerConfig> = {
+        sseRemote: {
+          url: "https://remote.mcp.io/sse?apiKey=sk-ant-api03-abcdef1234567890abcdef123456"
+        },
+        tokenRemote: {
+          url: "https://hub.example.com/events?token=ghp_1234567890abcdef1234567890abcdef"
+        },
+        safeRemote: {
+          url: "https://public.mcp.io/sse?format=json&version=2"
+        }
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(servers);
+
+      expect(redactedServers.sseRemote.url).toBe("${SSEREMOTE_URL}");
+      expect(redactedServers.tokenRemote.url).toBe("${TOKENREMOTE_URL}");
+      expect(redactedServers.safeRemote.url).toBe("https://public.mcp.io/sse?format=json&version=2");
+
+      expect(requiredEnv.some((e) => e.key === "SSEREMOTE_URL" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "TOKENREMOTE_URL" && e.isSecret)).toBe(true);
+    });
+
+    it("redacts HTTP headers containing Authorization Bearer tokens and API keys", () => {
+      const servers: Record<string, McpServerConfig> = {
+        remoteApi: {
+          url: "https://mcp.internal.net",
+          headers: {
+            Authorization: "Bearer sk-ant-api03-abcdef1234567890abcdef123456",
+            "x-api-key": "secret-token-xyz",
+            "Content-Type": "application/json"
+          }
+        } as any
+      };
+
+      const { redactedServers, requiredEnv } = redactMcpServers(servers);
+      const headers = (redactedServers.remoteApi as any).headers;
+
+      expect(headers.Authorization).toBe("Bearer ${REMOTEAPI_AUTHORIZATION}");
+      expect(headers["x-api-key"]).toBe("${REMOTEAPI_X_API_KEY}");
+      expect(headers["Content-Type"]).toBe("application/json");
+
+      expect(requiredEnv.some((e) => e.key === "REMOTEAPI_AUTHORIZATION" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key === "REMOTEAPI_X_API_KEY" && e.isSecret)).toBe(true);
+      expect(requiredEnv.some((e) => e.key.includes("CONTENT_TYPE"))).toBe(false);
+    });
   });
 });

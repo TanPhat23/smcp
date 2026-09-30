@@ -11,7 +11,11 @@ import {
 } from "../packages/core/src/core/merger/index.ts";
 import { extractPluginFiles, extractSkillFiles } from "../packages/cli/src/commands/install/index.ts";
 import { atomicWriteFileSync } from "../packages/core/src/utils/fs.ts";
-import { isPrototypePollutionKey } from "../packages/core/src/utils/security.ts";
+import {
+  containsNullByte,
+  isPrototypePollutionKey,
+  isWindowsReservedName
+} from "../packages/core/src/utils/security.ts";
 
 describe("Security & Hardening Test Suite", () => {
   let tmpDir: string;
@@ -257,6 +261,48 @@ describe("Security & Hardening Test Suite", () => {
       const stat = fs.statSync(filePath);
       // Mode owner read/write (0o600)
       expect(stat.mode & 0o777).toBe(0o600);
+    });
+  });
+
+  describe("Windows Reserved Names & Null-Byte Defenses", () => {
+    it("isWindowsReservedName identifies reserved DOS device names", () => {
+      expect(isWindowsReservedName("con")).toBe(true);
+      expect(isWindowsReservedName("CON")).toBe(true);
+      expect(isWindowsReservedName("prn.txt")).toBe(true);
+      expect(isWindowsReservedName("aux.md")).toBe(true);
+      expect(isWindowsReservedName("nul")).toBe(true);
+      expect(isWindowsReservedName("com1")).toBe(true);
+      expect(isWindowsReservedName("lpt9.dat")).toBe(true);
+      expect(isWindowsReservedName("path/to/con")).toBe(true);
+      expect(isWindowsReservedName("normal-name.ts")).toBe(false);
+      expect(isWindowsReservedName("connect.ts")).toBe(false);
+    });
+
+    it("containsNullByte identifies null bytes in inputs", () => {
+      expect(containsNullByte("hello\0world")).toBe(true);
+      expect(containsNullByte("clean-string")).toBe(false);
+      expect(containsNullByte(123 as any)).toBe(false);
+    });
+
+    it("installSkillFiles rejects Windows reserved device names and null bytes", () => {
+      const skillsDir = path.join(tmpDir, "skills-dos");
+      fs.mkdirSync(skillsDir, { recursive: true });
+
+      expect(() => installSkillFiles(skillsDir, "con", { "SKILL.md": "evil" })).toThrow(/invalid skill name/i);
+      expect(() => installSkillFiles(skillsDir, "aux.md", { "SKILL.md": "evil" })).toThrow(/invalid skill name/i);
+      expect(() => installSkillFiles(skillsDir, "skill\0evil", { "SKILL.md": "evil" })).toThrow(/invalid skill name/i);
+      expect(() => installSkillFiles(skillsDir, "safe-skill", { "nul": "evil" })).toThrow(/dangerous filename/i);
+      expect(() => installSkillFiles(skillsDir, "safe-skill", { "file\0.txt": "evil" })).toThrow(/dangerous filename/i);
+    });
+
+    it("installPluginFiles rejects Windows reserved device names and null bytes", () => {
+      const pluginDir = path.join(tmpDir, "plugins-dos");
+      fs.mkdirSync(pluginDir, { recursive: true });
+
+      expect(() => installPluginFiles(pluginDir, "con", { "tool.ts": "evil" })).toThrow(/invalid plugin name/i);
+      expect(() => installPluginFiles(pluginDir, "plugin\0evil", { "tool.ts": "evil" })).toThrow(/invalid plugin name/i);
+      expect(() => installPluginFiles(pluginDir, "safe-plugin", { "com1.ts": "evil" })).toThrow(/dangerous filename/i);
+      expect(() => installPluginFiles(pluginDir, "safe-plugin", { "tool\0.ts": "evil" })).toThrow(/dangerous filename/i);
     });
   });
 });

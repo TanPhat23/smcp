@@ -21,6 +21,16 @@ export function collectRequiredEnv(manifest: Manifest, options?: RedactorOptions
   };
 
   for (const sConf of Object.values(manifest.mcpServers || {})) {
+    const rawCmd = (sConf as Record<string, unknown>).command;
+    if (typeof rawCmd === "string") {
+      scanForPlaceholders(rawCmd, false);
+    } else if (Array.isArray(rawCmd)) {
+      for (const cmd of rawCmd) {
+        if (typeof cmd === "string") {
+          scanForPlaceholders(cmd, false);
+        }
+      }
+    }
     if (sConf.env) {
       for (const [k, v] of Object.entries(sConf.env)) {
         scanForPlaceholders(v, isSecretKey(k, options));
@@ -33,6 +43,14 @@ export function collectRequiredEnv(manifest: Manifest, options?: RedactorOptions
     }
     if (sConf.url) {
       scanForPlaceholders(sConf.url, false);
+    }
+    const headers = (sConf as any).headers;
+    if (headers && typeof headers === "object" && !Array.isArray(headers)) {
+      for (const [hk, hv] of Object.entries(headers)) {
+        if (typeof hv === "string") {
+          scanForPlaceholders(hv, isSecretKey(hk, options) || hk.toLowerCase() === "authorization");
+        }
+      }
     }
   }
 

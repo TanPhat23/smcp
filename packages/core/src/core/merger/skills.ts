@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
-import { isPrototypePollutionKey } from "../../utils/security.ts";
+import {
+  containsNullByte,
+  isPrototypePollutionKey,
+  isWindowsReservedName
+} from "../../utils/security.ts";
 import { isStrictlyInside } from "./helpers.ts";
 
 export function installSkillFiles(
@@ -23,8 +27,10 @@ export function installSkillFiles(
     skillName.includes("/") ||
     skillName.includes("\\") ||
     skillName.includes("..") ||
+    containsNullByte(skillName) ||
     path.isAbsolute(skillName) ||
-    isPrototypePollutionKey(skillName)
+    isPrototypePollutionKey(skillName) ||
+    isWindowsReservedName(skillName)
   ) {
     throw new Error(`Directory traversal attempt or invalid skill name: ${skillName}`);
   }
@@ -81,6 +87,10 @@ export function installSkillFiles(
     for (const [filename, content] of Object.entries(files)) {
       if (isPrototypePollutionKey(filename)) {
         continue;
+      }
+
+      if (containsNullByte(filename) || isWindowsReservedName(filename)) {
+        throw new Error(`Directory traversal or dangerous filename detected: ${filename}`);
       }
 
       const normalizedFilename = filename.replaceAll("\\", "/");

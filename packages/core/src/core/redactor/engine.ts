@@ -17,6 +17,12 @@ function urlContainsCredentials(url: string, options?: RedactorOptions): boolean
     if (parsed.username || parsed.password) {
       return true;
     }
+    // Inspect query search parameters for secret keys or token values
+    for (const [paramKey, paramVal] of parsed.searchParams.entries()) {
+      if (isSecretKey(paramKey, options) || isSecretValue(paramVal, options)) {
+        return true;
+      }
+    }
   } catch {
     // If not a valid standard URL, fallback to connection string pattern
     if (CONNECTION_STRING_PATTERN.test(url)) {
@@ -388,6 +394,59 @@ export function redactMcpServers(
           updatedConfig.url = config.url;
         }
       }
+    }
+
+    // 4. Redact headers (e.g. Authorization Bearer tokens, x-api-key for remote MCP servers)
+    const rawHeaders = (config as Record<string, unknown>).headers;
+    if (rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders)) {
+      const updatedHeaders: Record<string, string> = {};
+      for (const [headerKey, headerVal] of Object.entries(rawHeaders)) {
+        if (typeof headerVal !== "string") {
+          updatedHeaders[headerKey] = headerVal as any;
+          continue;
+        }
+
+        const placeholderMatch = headerVal.match(SINGLE_PLACEHOLDER_REGEX);
+        if (placeholderMatch) {
+          const varName = placeholderMatch[1];
+          updatedHeaders[headerKey] = headerVal;
+          setRequiredEnv(
+            varName,
+            `Header credential for ${serverName} (${headerKey})`,
+            isSecretKey(varName, options) || isSecretKey(headerKey, options)
+          );
+          continue;
+        }
+
+        const isAuthBearer = headerVal.startsWith("Bearer ");
+        const tokenCandidate = isAuthBearer ? headerVal.slice(7).trim() : headerVal;
+
+        const isSensitive =
+          headerKey.toLowerCase() === "authorization" ||
+          isSecretKey(headerKey, options) ||
+          isSecretValue(headerVal, options) ||
+          (isAuthBearer && (isSecretValue(tokenCandidate, options) || tokenCandidate.length >= 10));
+
+        if (isSensitive) {
+          const cleanKey = headerKey.replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
+          const baseKey = `${safePrefix}_${cleanKey}`;
+          const envKey = getNextArgKey(baseKey);
+
+          if (isAuthBearer) {
+            updatedHeaders[headerKey] = `Bearer \${${envKey}}`;
+          } else {
+            updatedHeaders[headerKey] = `\${${envKey}}`;
+          }
+          setRequiredEnv(
+            envKey,
+            `Secret header for ${serverName} (${headerKey})`,
+            true
+          );
+        } else {
+          updatedHeaders[headerKey] = headerVal;
+        }
+      }
+      (updatedConfig as any).headers = updatedHeaders;
     }
 
     redacted[serverName] = updatedConfig;

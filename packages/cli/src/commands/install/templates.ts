@@ -40,6 +40,18 @@ export function resolveMcpServerTemplates(
       resolved.url = sConf.url.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar);
     }
 
+    if ((sConf as any).headers && typeof (sConf as any).headers === "object") {
+      const updatedHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries((sConf as any).headers)) {
+        if (typeof v === "string") {
+          updatedHeaders[k] = v.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar);
+        } else {
+          updatedHeaders[k] = v as any;
+        }
+      }
+      (resolved as any).headers = updatedHeaders;
+    }
+
     resolvedServers[sName] = resolved;
   }
   return resolvedServers;

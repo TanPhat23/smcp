@@ -933,8 +933,12 @@ describe("Commands Implementation", () => {
             API_KEY: "${API_KEY}",
             SAFE_VAL: "constant"
           },
-          url: "https://${HOST}:${PORT}/sse"
-        }
+          url: "https://${HOST}:${PORT}/sse",
+          headers: {
+            Authorization: "Bearer ${SERVER_TOKEN}",
+            "X-Host": "${HOST}"
+          }
+        } as any
       };
 
       const envValues = {
@@ -952,6 +956,10 @@ describe("Commands Implementation", () => {
         SAFE_VAL: "constant"
       });
       expect(resolved.apiServer.url).toBe("https://example.com:8080/sse");
+      expect((resolved.apiServer as any).headers).toEqual({
+        Authorization: "Bearer tok_abc_123",
+        "X-Host": "example.com"
+      });
     });
 
     it("resolveMcpServerTemplates preserves placeholders if env var is missing", () => {
