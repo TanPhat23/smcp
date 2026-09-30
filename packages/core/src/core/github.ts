@@ -15,7 +15,7 @@ import {
 } from "./http.ts";
 
 export { HttpClient, createHttpClient, clearHttpClientCache, getOrCreateAxiosInstance };
-export const DEFAULT_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_MS;
+export const DEFAULT_TIMEOUT_MS = 60000;
 
 export function clearGitHubClientCache(): void {
   clearHttpClientCache();
@@ -175,7 +175,10 @@ export async function formatApiError(errOrRes: unknown, defaultMsg: string): Pro
   }
 
   const { status, statusText = "", data } = await parseResponseBody(errOrRes);
-  const detail = extractErrorDetail(data) || statusText;
+  let detail = extractErrorDetail(data) || statusText;
+  if (!detail && isAxiosError(errOrRes)) {
+    detail = errOrRes.message;
+  }
 
   let hint = "";
   if (isAxiosError(errOrRes) && errOrRes.response) {
