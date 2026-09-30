@@ -6,6 +6,11 @@
   "workspaces": [
     "packages/*"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TanPhat23/smcp.git"
+  },
+  "author": "TanPhat23",
   "scripts": {
     "dev": "bun run packages/cli/src/cli.ts",
     "test": "bun test",

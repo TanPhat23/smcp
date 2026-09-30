@@ -227,7 +227,7 @@ smcp add <source> [options]
 - `-f, --force`: Bypass conflict confirmation prompts, overwriting existing configurations.
 
 **Supported Sources:**
-- Full Gist URL: `smcp install https://gist.github.com/ghug/7f8a9b123456`
+- Full Gist URL: `smcp install https://gist.github.com/TanPhat23/7f8a9b123456`
 - Raw Gist Hex ID: `smcp install 7f8a9b1234567890abcdef1234567890`
 - Local Pack Directory: `smcp install ./my-pack`
 - Direct Manifest File: `smcp install ./my-pack/smcp.json`
@@ -235,7 +235,7 @@ smcp add <source> [options]
 **Examples:**
 ```bash
 # Interactive installation with agent selection and credential prompts
-smcp install https://gist.github.com/ghug/7f8a9b123456
+smcp install https://gist.github.com/TanPhat23/7f8a9b123456
 
 # Non-interactive installation using pre-set environment variables
 API_KEY="my-secret-key" smcp install ./my-pack -a opencode -f
@@ -259,7 +259,7 @@ smcp info <source>
 
 **Example:**
 ```bash
-smcp inspect https://gist.github.com/ghug/7f8a9b123456
+smcp inspect https://gist.github.com/TanPhat23/7f8a9b123456
 ```
 
 ---
@@ -391,7 +391,7 @@ When an agent pack is exported or published to a Gist, it is structured around a
 
 ### Setup
 ```bash
-git clone https://github.com/ghug/smcp.git
+git clone https://github.com/TanPhat23/smcp.git
 cd smcp
 bun install
 ```
@@ -427,4 +427,4 @@ node bin/smcp.js --help
 
 ## 📜 License
 
-MIT License © 2026 ghug
+MIT License © 2026 [Tấn Phát](https://github.com/TanPhat23)

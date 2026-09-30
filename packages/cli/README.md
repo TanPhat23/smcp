@@ -170,4 +170,4 @@ Need to integrate `smcp` features programmatically into a VS Code extension, web
 
 ## 📄 License
 
-MIT © [Tấn Phát](https://github.com/ghug)
+MIT © [Tấn Phát](https://github.com/TanPhat23)

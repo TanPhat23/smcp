@@ -39,7 +39,16 @@
     "model-context-protocol",
     "cli"
   ],
-  "author": "ghug",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TanPhat23/smcp.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/TanPhat23/smcp#readme",
+  "bugs": {
+    "url": "https://github.com/TanPhat23/smcp/issues"
+  },
+  "author": "TanPhat23",
   "license": "MIT",
   "dependencies": {
     "@tanphat/smcp-core": "^0.1.3",

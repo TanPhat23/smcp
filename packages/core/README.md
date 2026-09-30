@@ -164,4 +164,4 @@ registerAgentProfile("custom-ide", {
 
 ## 📄 License
 
-MIT © [Tấn Phát](https://github.com/ghug)
+MIT © [Tấn Phát](https://github.com/TanPhat23)
