@@ -1,5 +1,5 @@
 {
-  "name": "smcp",
+  "name": "@tanphat/smcp",
   "version": "0.1.2",
   "description": "CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations",
   "type": "module",
