@@ -68,7 +68,10 @@ export function ensurePluginDependenciesResolvable(
     if (!found) {
       const candidateSources = [
         expandHome(`~/.config/opencode/node_modules/${pkg}`),
-        expandHome(`~/.cache/opencode/npm`)
+        expandHome(`~/.local/share/opencode/node_modules/${pkg}`),
+        expandHome(`~/.cache/opencode/npm`),
+        ...(process.env.APPDATA ? [path.join(process.env.APPDATA, "opencode", "node_modules", pkg)] : []),
+        ...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, "opencode", "node_modules", pkg)] : [])
       ];
 
       let sourcePath: string | null = null;
@@ -120,7 +123,8 @@ export function ensurePluginDependenciesResolvable(
           fs.mkdirSync(path.dirname(targetPkgDir), { recursive: true });
           if (!fs.existsSync(targetPkgDir)) {
             try {
-              fs.symlinkSync(sourcePath, targetPkgDir, "junction");
+              const symlinkType = process.platform === "win32" ? "junction" : "dir";
+              fs.symlinkSync(sourcePath, targetPkgDir, symlinkType);
             } catch {
               fs.cpSync(sourcePath, targetPkgDir, { recursive: true });
             }

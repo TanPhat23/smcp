@@ -43,12 +43,17 @@ export function installSkillFiles(
   const targetDir = path.resolve(resolvedBaseDir, skillName);
   const relDir = path.relative(resolvedBaseDir, targetDir);
 
+  const baseDirWithSep = resolvedBaseDir.endsWith(path.sep) ? resolvedBaseDir : resolvedBaseDir + path.sep;
+  const isInsideBase = process.platform === "win32"
+    ? targetDir.toLowerCase().startsWith(baseDirWithSep.toLowerCase())
+    : targetDir.startsWith(baseDirWithSep);
+
   if (
     !relDir ||
     relDir.startsWith("..") ||
     path.isAbsolute(relDir) ||
     targetDir === resolvedBaseDir ||
-    !targetDir.startsWith(resolvedBaseDir + path.sep)
+    !isInsideBase
   ) {
     throw new Error(`Directory traversal detected in skill name: ${skillName}`);
   }
@@ -97,12 +102,17 @@ export function installSkillFiles(
       const resolvedFilePath = path.resolve(targetDir, normalizedFilename);
       const relFile = path.relative(targetDir, resolvedFilePath);
 
+      const targetDirWithSep = targetDir.endsWith(path.sep) ? targetDir : targetDir + path.sep;
+      const isFileInsideTarget = process.platform === "win32"
+        ? resolvedFilePath.toLowerCase().startsWith(targetDirWithSep.toLowerCase())
+        : resolvedFilePath.startsWith(targetDirWithSep);
+
       if (
         !relFile ||
         relFile.startsWith("..") ||
         path.isAbsolute(relFile) ||
         resolvedFilePath === targetDir ||
-        !resolvedFilePath.startsWith(targetDir + path.sep)
+        !isFileInsideTarget
       ) {
         throw new Error(`Directory traversal detected in filename: ${filename}`);
       }
