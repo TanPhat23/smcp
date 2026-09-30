@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { collectRequiredEnv, loadPackFromSource, type Manifest } from "@tanphat/core";
+import { collectRequiredEnv, loadPackFromSource, type Manifest } from "@tanphat/smcp-core";
 
 export interface InspectCommandOptions {
   json?: boolean;

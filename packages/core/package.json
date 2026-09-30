@@ -1,5 +1,5 @@
 {
-  "name": "@tanphat/core",
+  "name": "@tanphat/smcp-core",
   "version": "0.1.2",
   "description": "Headless core SDK for AI Agent Skills and MCP server configurations",
   "type": "module",

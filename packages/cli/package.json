@@ -42,7 +42,7 @@
   "author": "ghug",
   "license": "MIT",
   "dependencies": {
-    "@tanphat/core": "^0.1.2",
+    "@tanphat/smcp-core": "^0.1.2",
     "@clack/prompts": "^0.10.0",
     "commander": "^13.1.0",
     "picocolors": "^1.1.1",

@@ -16,11 +16,11 @@ import {
   type PluginEntry,
   type ShareCommandOptions,
   type SkillEntry
-} from "@tanphat/core";
+} from "@tanphat/smcp-core";
 import { bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
 import { getAllShareProviders, getShareProvider } from "./providers/index.ts";
 
-export type { ShareCommandOptions } from "@tanphat/core";
+export type { ShareCommandOptions } from "@tanphat/smcp-core";
 
 export async function shareCommand(options?: ShareCommandOptions): Promise<void> {
   const isAgentMode = Boolean(options?.json);

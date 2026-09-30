@@ -4,7 +4,7 @@ import type {
   PluginEntry,
   ShareCommandOptions,
   SkillEntry
-} from "@tanphat/core";
+} from "@tanphat/smcp-core";
 
 export interface ShareProviderContext {
   manifest: Manifest;

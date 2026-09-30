@@ -1,4 +1,4 @@
-import { isPrototypePollutionKey } from "@tanphat/core";
+import { isPrototypePollutionKey } from "@tanphat/smcp-core";
 import { GistShareProvider } from "./gist.ts";
 import { LocalShareProvider } from "./local.ts";
 import { RepoShareProvider } from "./repo.ts";

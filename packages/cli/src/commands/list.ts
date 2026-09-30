@@ -7,7 +7,7 @@ import {
   readInstalledMcpServers,
   readInstalledPlugins,
   scanSkills
-} from "@tanphat/core";
+} from "@tanphat/smcp-core";
 
 export interface ListCommandOptions {
   agents?: string[];

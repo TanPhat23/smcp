@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "@tanphat/core";
+import type { McpServerConfig } from "@tanphat/smcp-core";
 
 export function resolveMcpServerTemplates(
   servers: Record<string, McpServerConfig>,

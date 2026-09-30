@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { getAgentProfiles } from "@tanphat/core";
+import { getAgentProfiles } from "@tanphat/smcp-core";
 
 export interface AgentListCommandOptions {
   json?: boolean;

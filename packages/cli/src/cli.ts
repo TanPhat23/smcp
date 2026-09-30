@@ -13,7 +13,7 @@ import {
   listCommand,
   shareCommand
 } from "./commands/index.ts";
-import { isPrototypePollutionKey, loadUserExtensions } from "@tanphat/core";
+import { isPrototypePollutionKey, loadUserExtensions } from "@tanphat/smcp-core";
 
 function parseEnvOptions(rawEnv?: string[]): Record<string, string> {
   if (!rawEnv || !Array.isArray(rawEnv)) return {};

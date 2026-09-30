@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { getAuthProvider, getAuthToken } from "@tanphat/core";
+import { getAuthProvider, getAuthToken } from "@tanphat/smcp-core";
 
 export async function authStatusCommand(provider = "github"): Promise<void> {
   const authProvider = getAuthProvider(provider);

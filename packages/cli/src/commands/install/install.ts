@@ -12,11 +12,11 @@ import {
   triggerHook,
   type InstallCommandOptions,
   type Manifest
-} from "@tanphat/core";
+} from "@tanphat/smcp-core";
 import { installPackIntoAgents } from "./agents.ts";
 import { resolveMcpServerTemplates } from "./templates.ts";
 
-export type { InstallCommandOptions } from "@tanphat/core";
+export type { InstallCommandOptions } from "@tanphat/smcp-core";
 
 export async function installCommand(
   source: string,
