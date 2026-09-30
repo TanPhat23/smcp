@@ -3,10 +3,19 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.1.2-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
+
+---
+
+## 📦 Packages in this Monorepo
+
+| Package | Version | Description |
+| :--- | :--- | :--- |
+| [**`@tanphat/smcp`**](packages/cli) | [![npm](https://img.shields.io/npm/v/@tanphat/smcp.svg)](https://www.npmjs.com/package/@tanphat/smcp) | Interactive CLI tool & multi-agent package manager (`smcp`) |
+| [**`@tanphat/smcp-core`**](packages/core) | [![npm](https://img.shields.io/npm/v/@tanphat/smcp-core.svg)](https://www.npmjs.com/package/@tanphat/smcp-core) | Headless core SDK with zero terminal UI dependencies |
 
 ---
 
@@ -32,27 +41,27 @@ Run instantly via `npx` or `bunx` without prior installation:
 
 ```bash
 # Using npx (Node.js 18+)
-npx smcp <command>
+npx @tanphat/smcp <command>
 
 # Using bunx (Bun 1.1+)
-bunx smcp <command>
+bunx @tanphat/smcp <command>
 ```
 
 Or install globally on your machine:
 
 ```bash
 # Using npm
-npm install -g smcp
+npm install -g @tanphat/smcp
 
 # Using bun
-bun add -g smcp
+bun add -g @tanphat/smcp
 ```
 
 Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.0
+# Output: 0.1.2
 ```
 
 ---

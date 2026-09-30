@@ -30,7 +30,7 @@ describe("CLI Commander Wiring & Inspect Command", () => {
     it("configures program name, version, and description", () => {
       const program = createProgram();
       expect(program.name()).toBe("smcp");
-      expect(program.version()).toBe("0.1.2");
+      expect(program.version()).toBe("0.1.3");
       expect(program.description()).toContain("AI Agent Skills and MCP");
     });
 
@@ -298,12 +298,12 @@ describe("CLI Commander Wiring & Inspect Command", () => {
       expect(output).toContain("agent");
     });
 
-    it("runs node bin/smcp.js --version and outputs 0.1.2", () => {
+    it("runs node bin/smcp.js --version and outputs 0.1.3", () => {
       const output = execSync(`node "${binSmcp}" --version`, {
         cwd: smcpRoot,
         encoding: "utf8"
       });
-      expect(output.trim()).toBe("0.1.2");
+      expect(output.trim()).toBe("0.1.3");
     });
 
     it("runs bun bin/smcp.js --help and exits 0", () => {
