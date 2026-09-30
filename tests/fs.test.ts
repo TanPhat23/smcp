@@ -87,6 +87,17 @@ describe("High-Efficiency File Engine", () => {
     expect(files["file.txt"]).toBe("concurrency test");
   });
 
+  it("collectDirectoryFilesAsync skips files containing null bytes", async () => {
+    const tmp = path.join(os.tmpdir(), "smcp-fs-null-test-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(path.join(tmp, "binary.txt"), Buffer.from("hello\0world"));
+    fs.writeFileSync(path.join(tmp, "clean.txt"), "hello world");
+
+    const files = await collectDirectoryFilesAsync(tmp);
+    expect(files["clean.txt"]).toBe("hello world");
+    expect(files["binary.txt"]).toBeUndefined();
+  });
+
   it("atomicWriteFileAsync writes files safely and non-destructively", async () => {
     const tmpFile = path.join(os.tmpdir(), "smcp-write-test-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".txt");
     await atomicWriteFileAsync(tmpFile, "hello world async");

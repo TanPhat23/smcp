@@ -229,6 +229,23 @@ describe("Security & Hardening Test Suite", () => {
 
       expect(fs.existsSync(path.join(outsideDir, "tool.ts"))).toBe(false);
     });
+
+    it("installPluginFiles detects and blocks symlink traversal in nested file parent directories", () => {
+      const pluginDir = path.join(tmpDir, "sym-plugins-nested");
+      const outsideDir = path.join(tmpDir, "outside-plugin-target-nested");
+      const validPluginDir = path.join(pluginDir, "my-plugin");
+      fs.mkdirSync(validPluginDir, { recursive: true });
+      fs.mkdirSync(outsideDir, { recursive: true });
+
+      const targetSub = path.join(validPluginDir, "sub-escape");
+      fs.symlinkSync(outsideDir, targetSub, "dir");
+
+      expect(() => {
+        installPluginFiles(pluginDir, "my-plugin", { "sub-escape/evil.ts": "payload" });
+      }).toThrow(/Directory traversal|symlink escape/);
+
+      expect(fs.existsSync(path.join(outsideDir, "evil.ts"))).toBe(false);
+    });
   });
 
   describe("Atomic File Operations & Permissions", () => {

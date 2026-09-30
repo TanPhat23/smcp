@@ -164,6 +164,31 @@ describe("Secret Redactor Engine", () => {
     expect(requiredEnv).toHaveLength(0);
   });
 
+  it("preserves isSecret: true when url is a single placeholder with secret keyword in variable name", () => {
+    const servers: Record<string, McpServerConfig> = {
+      remote: {
+        url: "${SECRET_REMOTE_TOKEN_URL}"
+      }
+    };
+    const { redactedServers, requiredEnv } = redactMcpServers(servers);
+    expect(redactedServers.remote.url).toBe("${SECRET_REMOTE_TOKEN_URL}");
+    const secretEnv = requiredEnv.find((e) => e.key === "SECRET_REMOTE_TOKEN_URL");
+    expect(secretEnv).toBeDefined();
+    expect(secretEnv?.isSecret).toBe(true);
+  });
+
+  it("preserves isSecret: true for command parameter single placeholder with secret name", () => {
+    const servers: Record<string, McpServerConfig> = {
+      myTool: {
+        command: ["my-tool", "${AUTH_TOKEN}"] as any
+      }
+    };
+    const { requiredEnv } = redactMcpServers(servers);
+    const tokenEnv = requiredEnv.find((e) => e.key === "AUTH_TOKEN");
+    expect(tokenEnv).toBeDefined();
+    expect(tokenEnv?.isSecret).toBe(true);
+  });
+
   it("redacts database connection strings placed inside env", () => {
     const servers: Record<string, McpServerConfig> = {
       dbService: {
