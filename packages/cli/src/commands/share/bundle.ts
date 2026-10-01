@@ -7,6 +7,7 @@ import {
   isStrictlyInside,
   type PluginEntry,
   type PluginObjectEntry,
+  type ScannedAgentEntry,
   type SkillEntry
 } from "@tanphat/smcp-core";
 
@@ -158,4 +159,19 @@ export async function bundlePluginFiles(plugins: PluginEntry[]): Promise<{
   }
 
   return { bundledPlugins, gistFiles };
+}
+
+export function bundleAgentFilesForShare(agents: ScannedAgentEntry[]): {
+  bundledAgents: Array<ScannedAgentEntry & { rawContent: string }>;
+  gistFiles: Record<string, { content: string }>;
+} {
+  const bundledAgents: Array<ScannedAgentEntry & { rawContent: string }> = [];
+  const gistFiles: Record<string, { content: string }> = {};
+
+  for (const ag of agents) {
+    gistFiles[`agents_${ag.name}.md`] = { content: ag.rawContent };
+    bundledAgents.push(ag);
+  }
+
+  return { bundledAgents, gistFiles };
 }

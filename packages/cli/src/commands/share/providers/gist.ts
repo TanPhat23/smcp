@@ -125,7 +125,8 @@ export class GistShareProvider implements ShareProvider {
               gistId: finalGistId,
               servers: Object.keys(selectedServers),
               skills: selectedSkills.map((s) => s.name),
-              plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
+              plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name)),
+              agents: (context.selectedAgents || []).map((a) => a.name)
             },
             null,
             2

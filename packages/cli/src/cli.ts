@@ -93,6 +93,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("-s, --servers <servers...>", "Specific MCP servers to share")
     .option("-k, --skills <skills...>", "Specific skills to share")
     .option("-p, --plugins <plugins...>", "Specific plugins to share")
+    .option("-g, --agent-roles <roles...>", "Specific agent roles to share")
     .option("-n, --name <name>", "Pack name")
     .option("-d, --description <description>", "Pack description")
     .option("--public", "Make published GitHub Gist or repository public")

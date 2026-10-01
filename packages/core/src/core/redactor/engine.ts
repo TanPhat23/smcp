@@ -232,10 +232,12 @@ export function redactMcpServers(
       updatedConfig.command = updatedCmdArr as any;
     }
 
-    // 1. Redact env object
-    if (config.env) {
+    // 1. Redact env / environment object
+    const envSource = config.env || (config as Record<string, unknown>).environment;
+    if (envSource && typeof envSource === "object" && !Array.isArray(envSource)) {
       const updatedEnv: Record<string, string> = {};
-      for (const [envKey, envVal] of Object.entries(config.env)) {
+      for (const [envKey, rawVal] of Object.entries(envSource as Record<string, unknown>)) {
+        const envVal = String(rawVal ?? "");
         const placeholderMatch = envVal.match(SINGLE_PLACEHOLDER_REGEX);
         if (placeholderMatch) {
           // Already templated
@@ -268,7 +270,12 @@ export function redactMcpServers(
           }
         }
       }
-      updatedConfig.env = updatedEnv;
+      if (config.env) {
+        updatedConfig.env = updatedEnv;
+      }
+      if ((config as Record<string, unknown>).environment) {
+        (updatedConfig as Record<string, unknown>).environment = updatedEnv;
+      }
     }
 
     // 2. Redact args (e.g. database connection strings or tokens)

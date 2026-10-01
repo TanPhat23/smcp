@@ -6,6 +6,7 @@ import {
   getAgentProfiles,
   readInstalledMcpServers,
   readInstalledPlugins,
+  scanAgents,
   scanSkills
 } from "@tanphat/smcp-core";
 
@@ -43,6 +44,7 @@ export function listCommand(options?: ListCommandOptions): void {
               profile?.plugins?.dirPaths
             )
           : [];
+        const agentsList = agent.agentsDirPath ? scanAgents(agent.agentsDirPath) : [];
         return {
           id: agent.id,
           name: agent.name,
@@ -50,6 +52,7 @@ export function listCommand(options?: ListCommandOptions): void {
           skillsDirPath: agent.skillsDirPath,
           pluginsConfigPath: agent.pluginsConfigPath,
           pluginsDirPath: agent.pluginsDirPath,
+          agentsDirPath: agent.agentsDirPath,
           mcpServers: servers,
           skills: skills.map((sk) => ({
             name: sk.name,
@@ -57,7 +60,14 @@ export function listCommand(options?: ListCommandOptions): void {
             description: sk.description,
             contentHash: sk.contentHash
           })),
-          plugins
+          plugins,
+          agents: agentsList.map((ag) => ({
+            name: ag.name,
+            path: ag.path,
+            description: ag.description,
+            mode: ag.mode,
+            model: ag.model
+          }))
         };
       })
     };
@@ -182,6 +192,25 @@ export function listCommand(options?: ListCommandOptions): void {
             }
           } else {
             console.log(`    - ${pc.bold(pName)}`);
+          }
+        }
+      }
+    }
+
+    if (agent.agentsDirPath) {
+      const agentsList = scanAgents(agent.agentsDirPath);
+      console.log(`  ${pc.blue("Agents")} (${pc.dim(agent.agentsDirPath)}):`);
+      if (agentsList.length === 0) {
+        console.log(`    ${pc.dim("(none)")}`);
+      } else {
+        for (const ag of agentsList) {
+          const modeHint = ag.mode ? ` (${ag.mode})` : "";
+          if (showSettings) {
+            const desc = ag.description ? ` - ${ag.description}` : "";
+            console.log(`    - ${pc.bold(pc.blue(ag.name))}${pc.dim(modeHint)}${pc.dim(desc)}`);
+            console.log(`        ${pc.dim("Path:")} ${ag.path}`);
+          } else {
+            console.log(`    - ${pc.bold(ag.name)}${pc.dim(modeHint)}`);
           }
         }
       }

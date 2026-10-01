@@ -205,6 +205,14 @@ export class RepoShareProvider implements ShareProvider {
         }
       }
 
+      if (context.bundledAgents) {
+        for (const ag of context.bundledAgents) {
+          if (ag.rawContent) {
+            repoFiles[`agents/${ag.name}.md`] = ag.rawContent;
+          }
+        }
+      }
+
       const res = await client.commitFilesToRepo({
         owner,
         repo: repoName,
@@ -252,7 +260,8 @@ export class RepoShareProvider implements ShareProvider {
               branch: res.branch,
               servers: Object.keys(selectedServers),
               skills: selectedSkills.map((s) => s.name),
-              plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
+              plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name)),
+              agents: (context.selectedAgents || []).map((a) => a.name)
             },
             null,
             2

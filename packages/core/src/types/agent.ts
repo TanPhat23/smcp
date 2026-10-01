@@ -7,7 +7,8 @@ export const DetectedAgentSchema = z.object({
   mcpConfigPath: z.string().nullable(),
   skillsDirPath: z.string().nullable(),
   pluginsConfigPath: z.string().nullable().optional(),
-  pluginsDirPath: z.string().nullable().optional()
+  pluginsDirPath: z.string().nullable().optional(),
+  agentsDirPath: z.string().nullable().optional()
 });
 
 export type DetectedAgent = z.infer<typeof DetectedAgentSchema>;

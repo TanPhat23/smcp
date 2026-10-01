@@ -2,6 +2,7 @@ import type {
   Manifest,
   McpServerConfig,
   PluginEntry,
+  ScannedAgentEntry,
   ShareCommandOptions,
   SkillEntry
 } from "@tanphat/smcp-core";
@@ -10,10 +11,12 @@ export interface ShareProviderContext {
   manifest: Manifest;
   bundledSkills: SkillEntry[];
   bundledPlugins: PluginEntry[];
+  bundledAgents?: Array<ScannedAgentEntry & { rawContent: string }>;
   redactedServers: Record<string, McpServerConfig>;
   selectedServers: Record<string, McpServerConfig>;
   selectedSkills: SkillEntry[];
   selectedPlugins: PluginEntry[];
+  selectedAgents?: ScannedAgentEntry[];
   gistFiles: Record<string, { content: string }>;
   options?: ShareCommandOptions;
   isNonInteractive: boolean;

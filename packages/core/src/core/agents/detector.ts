@@ -146,6 +146,24 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
 
     let resolvedPluginsConfigPath: string | null = null;
     let resolvedPluginsDirPath: string | null = null;
+    let resolvedAgentsDirPath: string | null = null;
+
+    if (profile.agents && Array.isArray(profile.agents.paths)) {
+      for (const p of profile.agents.paths) {
+        try {
+          const expanded = expandHome(p);
+          if (fs.existsSync(expanded)) {
+            const stat = fs.statSync(expanded);
+            if (stat.isDirectory()) {
+              resolvedAgentsDirPath = expanded;
+              break;
+            }
+          }
+        } catch {
+          // Ignore path access error
+        }
+      }
+    }
 
     if (profile.plugins && Array.isArray(profile.plugins.paths)) {
       for (const p of profile.plugins.paths) {
@@ -185,7 +203,8 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
       resolvedMcpPath ||
       resolvedSkillsPath ||
       resolvedPluginsConfigPath ||
-      resolvedPluginsDirPath
+      resolvedPluginsDirPath ||
+      resolvedAgentsDirPath
     ) {
       detected.push({
         id,
@@ -193,7 +212,8 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
         mcpConfigPath: resolvedMcpPath,
         skillsDirPath: resolvedSkillsPath,
         pluginsConfigPath: resolvedPluginsConfigPath,
-        pluginsDirPath: resolvedPluginsDirPath
+        pluginsDirPath: resolvedPluginsDirPath,
+        agentsDirPath: resolvedAgentsDirPath
       });
     }
   }

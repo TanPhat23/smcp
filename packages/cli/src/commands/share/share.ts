@@ -9,15 +9,17 @@ import {
   readInstalledMcpServers,
   readInstalledPlugins,
   redactMcpServers,
+  scanAgents,
   scanSkills,
   triggerHook,
   type Manifest,
   type McpServerConfig,
   type PluginEntry,
+  type ScannedAgentEntry,
   type ShareCommandOptions,
   type SkillEntry
 } from "@tanphat/smcp-core";
-import { bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
+import { bundleAgentFilesForShare, bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
 import { getAllShareProviders, getShareProvider } from "./providers/index.ts";
 
 export type { ShareCommandOptions } from "@tanphat/smcp-core";
@@ -110,9 +112,27 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     }
   }
 
+  // 2c. Collect all available agents
+  const availableAgents: ScannedAgentEntry[] = [];
+  for (const agent of agents) {
+    if (agent.agentsDirPath) {
+      const scanned = scanAgents(agent.agentsDirPath);
+      for (const ag of scanned) {
+        if (!availableAgents.some((existing) => existing.name === ag.name)) {
+          availableAgents.push(ag);
+        }
+      }
+    }
+  }
+
   const serverNames = Object.keys(availableServers);
-  if (serverNames.length === 0 && availableSkills.length === 0 && availablePlugins.length === 0) {
-    const errMsg = "No MCP servers, skills, or plugins found to share.";
+  if (
+    serverNames.length === 0 &&
+    availableSkills.length === 0 &&
+    availablePlugins.length === 0 &&
+    availableAgents.length === 0
+  ) {
+    const errMsg = "No MCP servers, skills, plugins, or agents found to share.";
     if (isAgentMode) {
       console.error(JSON.stringify({ success: false, error: errMsg }));
     } else {
@@ -225,10 +245,38 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     });
   }
 
+  // 4c. Select agents
+  let selectedAgents: ScannedAgentEntry[] = [];
+  if (options?.agentRoles !== undefined && Array.isArray(options.agentRoles)) {
+    // If user filtered agent roles specifically
+    selectedAgents = availableAgents.filter((ag) => options.agentRoles?.includes(ag.name));
+  } else if (isNonInteractive && availableAgents.length > 0) {
+    selectedAgents = [...availableAgents];
+  } else if (availableAgents.length > 0) {
+    const picked = await p.groupMultiselect({
+      message: "Select Agents to include:",
+      options: {
+        "Select all / Deselect all": availableAgents.map((ag) => ({
+          value: ag.name,
+          label: ag.name,
+          hint: ag.description || ag.mode || "agent"
+        }))
+      },
+      required: false
+    });
+    if (p.isCancel(picked)) {
+      p.cancel("Operation cancelled.");
+      return;
+    }
+    const pickedNames = picked as string[];
+    selectedAgents = availableAgents.filter((ag) => pickedNames.includes(ag.name));
+  }
+
   if (
     Object.keys(selectedServers).length === 0 &&
     selectedSkills.length === 0 &&
-    selectedPlugins.length === 0
+    selectedPlugins.length === 0 &&
+    selectedAgents.length === 0
   ) {
     const errMsg = "No items selected.";
     if (isAgentMode) {
@@ -443,7 +491,8 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   // 8. Bundle skill & plugin files
   const { bundledSkills, gistFiles: skillGistFiles } = bundleSkillFiles(selectedSkills);
   const { bundledPlugins, gistFiles: pluginGistFiles } = await bundlePluginFiles(selectedPlugins);
-  const gistFiles: Record<string, { content: string }> = { ...skillGistFiles, ...pluginGistFiles };
+  const { bundledAgents, gistFiles: agentGistFiles } = bundleAgentFilesForShare(selectedAgents);
+  const gistFiles: Record<string, { content: string }> = { ...skillGistFiles, ...pluginGistFiles, ...agentGistFiles };
 
   const manifest: Manifest = {
     $schema: "https://smcp.dev/schema.json",
@@ -455,6 +504,13 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     mcpServers: redactedServers,
     skills: bundledSkills,
     plugins: bundledPlugins,
+    agents: bundledAgents.map((ag) => ({
+      name: ag.name,
+      path: path.posix.join("agents", `${ag.name}.md`),
+      description: ag.description,
+      mode: ag.mode,
+      model: ag.model
+    })),
     requiredEnv
   };
 
@@ -478,6 +534,7 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
       selectedServers,
       selectedSkills,
       selectedPlugins,
+      selectedAgents,
       redactedServers,
       requiredEnv,
       options,
@@ -498,10 +555,12 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     manifest,
     bundledSkills,
     bundledPlugins,
+    bundledAgents,
     redactedServers,
     selectedServers,
     selectedSkills,
     selectedPlugins,
+    selectedAgents,
     gistFiles,
     options,
     isNonInteractive,

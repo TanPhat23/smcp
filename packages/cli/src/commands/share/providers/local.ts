@@ -19,6 +19,8 @@ export class LocalShareProvider implements ShareProvider {
       selectedServers,
       selectedSkills,
       selectedPlugins,
+      selectedAgents,
+      bundledAgents,
       targetLocalOutDir,
       cleanPackName,
       version,
@@ -26,7 +28,7 @@ export class LocalShareProvider implements ShareProvider {
     } = context;
 
     const outDir = targetLocalOutDir || path.resolve(`./${cleanPackName}`);
-    exportPackLocally(manifest, bundledSkills, outDir, bundledPlugins);
+    exportPackLocally(manifest, bundledSkills, outDir, bundledPlugins, bundledAgents);
 
     const serverFingerprints: Record<string, string> = {};
     for (const [k, v] of Object.entries(redactedServers)) {
@@ -61,7 +63,8 @@ export class LocalShareProvider implements ShareProvider {
             location: outDir,
             servers: Object.keys(selectedServers),
             skills: selectedSkills.map((s) => s.name),
-            plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name))
+            plugins: selectedPlugins.map((p) => (typeof p === "string" ? p : p.name)),
+            agents: (selectedAgents || []).map((a) => a.name)
           },
           null,
           2
