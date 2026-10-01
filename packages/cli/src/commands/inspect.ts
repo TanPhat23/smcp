@@ -1,9 +1,24 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { collectRequiredEnv, loadPackFromSource, type Manifest } from "@tanphat/smcp-core";
+import { collectRequiredEnv, loadPackFromSource, type AgentEntry, type Manifest } from "@tanphat/smcp-core";
 
 export interface InspectCommandOptions {
   json?: boolean;
+}
+
+export function formatInspectAgents(agents: AgentEntry[] = []): string {
+  const count = agents.length;
+  const header = `🤖 Agents (${count}):`;
+  if (count === 0) {
+    return `${header}\n  (none)`;
+  }
+  const lines = [header];
+  for (const ag of agents) {
+    const mode = ag.mode || "subagent";
+    const desc = ag.description ? ` — ${ag.description}` : "";
+    lines.push(`  • ${ag.name} (${mode})${desc}`);
+  }
+  return lines.join("\n");
 }
 
 export async function inspectCommand(
@@ -23,6 +38,7 @@ export async function inspectCommand(
         JSON.stringify(
           {
             manifest,
+            agents: manifest.agents || [],
             requiredEnv,
             installCommand: `smcp install ${source}`
           },
@@ -141,6 +157,19 @@ export async function inspectCommand(
       if (typeof pl === "object" && pl.files && Object.keys(pl.files).length > 0) {
         console.log(`      ${pc.dim("Files:")} ${Object.keys(pl.files).join(", ")}`);
       }
+    }
+  }
+
+  // Display Agents
+  const agents = manifest.agents || [];
+  console.log(`\n${pc.bold(pc.cyan(`🤖 Agents (${agents.length}):`))}`);
+  if (agents.length === 0) {
+    console.log(`  ${pc.dim("(none)")}`);
+  } else {
+    for (const ag of agents) {
+      const mode = ag.mode || "subagent";
+      const desc = ag.description ? ` — ${ag.description}` : "";
+      console.log(`  • ${pc.bold(ag.name)}${pc.dim(` (${mode})`)}${desc}`);
     }
   }
 

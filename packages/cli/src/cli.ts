@@ -12,6 +12,7 @@ import {
   instructionsCommand,
   listCommand,
   outdatedCommand,
+  packCommand,
   shareCommand,
   uninstallCommand,
   updateCommand
@@ -61,6 +62,18 @@ export function createProgram(options?: CreateProgramOptions): Command {
     const isJson = Boolean(opts.json);
     await loadUserExtensions({ disabled, json: isJson });
   });
+
+  program
+    .command("pack [dir]")
+    .description("Package local skills, plugins, and universal agents into an smcp pack")
+    .option("-o, --output <dir>", "Output directory for bundled pack")
+    .option("-n, --name <name>", "Pack name override")
+    .option("-v, --version <version>", "Pack version override")
+    .option("-d, --description <description>", "Pack description override")
+    .option("--json", "Output packaging result in JSON format")
+    .action(async (dir, options) => {
+      await packCommand(dir, options);
+    });
 
   program
     .command("share")

@@ -8,4 +8,5 @@ export * from "./update.ts";
 export * from "./uninstall.ts";
 export * from "./auth/index.ts";
 export * from "./agent/index.ts";
+export * from "./pack/index.ts";
 export * from "./cli-registry.ts";
