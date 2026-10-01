@@ -50,6 +50,13 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
         "./.opencode/plugins",
         "~/.config/opencode/plugins"
       ]
+    },
+    agents: {
+      paths: [
+        "~/.config/opencode/agents",
+        "./.opencode/agents"
+      ],
+      format: "markdown"
     }
   },
   "claude-code": {
@@ -68,6 +75,13 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       ],
       key: "enabledPlugins",
       format: "map"
+    },
+    agents: {
+      paths: [
+        "~/.claude/commands",
+        "./.claude/commands"
+      ],
+      format: "markdown"
     }
   },
   "claude-desktop": {
@@ -81,7 +95,8 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       key: "mcpServers"
     },
     skills: null,
-    plugins: null
+    plugins: null,
+    agents: null
   },
   cursor: {
     name: "Cursor",
@@ -92,7 +107,8 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
     skills: {
       paths: ["~/.cursor/skills", "./.cursor/rules"]
     },
-    plugins: null
+    plugins: null,
+    agents: null
   },
   windsurf: {
     name: "Windsurf",
@@ -103,6 +119,7 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
     skills: {
       paths: ["~/.codeium/windsurf/skills"]
     },
-    plugins: null
+    plugins: null,
+    agents: null
   }
 });

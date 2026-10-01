@@ -10,5 +10,6 @@ export * from "./plugins.ts";
 export * from "./filter.ts";
 export * from "./frontmatter.ts";
 export * from "./compilers/index.ts";
+export * from "./agents-installer.ts";
 
 export type { DetectedAgent };
