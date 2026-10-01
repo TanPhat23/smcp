@@ -56,6 +56,8 @@ export function parseAgentMarkdown(content: string, filename?: string): Universa
   }
 
   return {
+    mode: "subagent",
+    skills: [],
     ...validationResult.data,
     prompt,
   };

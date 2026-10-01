@@ -7,6 +7,8 @@ import {
 import { isPrototypePollutionKey } from "../../utils/security.ts";
 import { getStorageProvider } from "./storage/index.ts";
 
+export type { InstalledPackRecord, InstalledPacksRegistry };
+
 export function getInstalledPacks(): InstalledPacksRegistry {
   try {
     const raw = getStorageProvider().getItem("installed");

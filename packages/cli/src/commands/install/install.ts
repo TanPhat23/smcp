@@ -69,10 +69,14 @@ export async function installCommand(
     const mcpNames = Object.keys(manifest.mcpServers || {});
     const skillNames = (manifest.skills || []).map((s) => s.name);
     const pluginNames = (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name));
+    const agentNames = (manifest.agents || []).map((a) => a.name);
     console.log(`\n${pc.bold("Description:")} ${manifest.description || "(none)"}`);
     console.log(`${pc.bold("MCP Servers:")} ${mcpNames.join(", ") || "(none)"}`);
     console.log(`${pc.bold("Skills:")} ${skillNames.join(", ") || "(none)"}`);
     console.log(`${pc.bold("Plugins:")} ${pluginNames.join(", ") || "(none)"}`);
+    if (agentNames.length > 0) {
+      console.log(`${pc.bold("Agents:")} ${agentNames.join(", ")}`);
+    }
   }
 
   // Select target agents
@@ -339,6 +343,7 @@ export async function installCommand(
       installedMcp: Object.keys(resolvedServers),
       installedSkills: (manifest.skills || []).map((s) => s.name),
       installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
+      installedAgents: (manifest.agents || []).map((a) => a.name),
       envKeys: Object.keys(options?.env || {}),
       installedAt: new Date().toISOString()
     });
@@ -367,6 +372,7 @@ export async function installCommand(
         installedMcp: result.installedMcp,
         installedSkills: result.installedSkills,
         installedPlugins: result.installedPlugins,
+        installedAgents: result.installedAgents,
         options,
         isAgentMode
       });
@@ -391,6 +397,7 @@ export async function installCommand(
             installedMcp: Object.keys(resolvedServers),
             installedSkills: (manifest.skills || []).map((s) => s.name),
             installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
+            installedAgents: (manifest.agents || []).map((a) => a.name),
             writtenPaths: result.writtenPaths,
             warnings: warnings.length > 0 ? warnings : undefined
           },
@@ -417,6 +424,9 @@ export async function installCommand(
       }
       if (written.pluginDir && written.plugins && written.plugins.length > 0) {
         console.log(`  • ${pc.cyan(agentId)} plugins: ${pc.dim(written.pluginDir)} [${written.plugins.join(", ")}]`);
+      }
+      if (written.agentsDir && written.agents && written.agents.length > 0) {
+        console.log(`  • ${pc.cyan(agentId)} agents: ${pc.dim(written.agentsDir)} [${written.agents.join(", ")}]`);
       }
     }
     console.log("");

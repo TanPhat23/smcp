@@ -5,6 +5,7 @@ import {
   isPrototypePollutionKey,
   isStrictlyInside,
   isWindowsReservedName,
+  type AgentEntry,
   type PluginEntry,
   type SkillEntry
 } from "@tanphat/smcp-core";
@@ -222,4 +223,80 @@ export function extractPluginFiles(
   }
 
   return filesToInstall;
+}
+
+export function extractAgentContent(
+  agent: AgentEntry,
+  rawFiles?: Record<string, string>,
+  localDir?: string
+): string {
+  if (
+    !agent ||
+    !agent.name ||
+    typeof agent.name !== "string" ||
+    agent.name.includes("..") ||
+    containsNullByte(agent.name) ||
+    path.isAbsolute(agent.name) ||
+    isPrototypePollutionKey(agent.name) ||
+    isWindowsReservedName(agent.name)
+  ) {
+    return "";
+  }
+
+  // 1. Check rawFiles
+  if (rawFiles) {
+    if (agent.path && rawFiles[agent.path]) {
+      return rawFiles[agent.path];
+    }
+    const normalizedPath = (agent.path || "").replace(/\\/g, "/");
+    if (normalizedPath && rawFiles[normalizedPath]) {
+      return rawFiles[normalizedPath];
+    }
+    const candidates = [
+      `agents/${agent.name}.md`,
+      `agents/${agent.name}`,
+      `${agent.name}.md`,
+      `agents_${agent.name}.md`,
+      `agents_${agent.name}`
+    ];
+    for (const c of candidates) {
+      if (rawFiles[c]) {
+        return rawFiles[c];
+      }
+    }
+  }
+
+  // 2. Check localDir
+  if (localDir && fs.existsSync(localDir)) {
+    const resolvedLocalDir = path.resolve(localDir);
+    const candidates: string[] = [];
+    if (agent.path) {
+      candidates.push(path.resolve(resolvedLocalDir, agent.path));
+    }
+    candidates.push(
+      path.resolve(resolvedLocalDir, "agents", `${agent.name}.md`),
+      path.resolve(resolvedLocalDir, "agents", agent.name),
+      path.resolve(resolvedLocalDir, `${agent.name}.md`)
+    );
+
+    for (const candidate of candidates) {
+      if (!isStrictlyInside(resolvedLocalDir, candidate)) {
+        continue;
+      }
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        try {
+          const canonical = fs.realpathSync(candidate);
+          const canonicalLocalDir = fs.realpathSync(resolvedLocalDir);
+          if (isStrictlyInside(canonicalLocalDir, canonical)) {
+            return fs.readFileSync(canonical, "utf8");
+          }
+        } catch {
+          // ignore error
+        }
+      }
+    }
+  }
+
+  // 3. Fallback default markdown
+  return `---\nname: ${agent.name}\ndescription: ${agent.description || agent.name}\nmode: ${agent.mode || "subagent"}\n---\n`;
 }

@@ -9,7 +9,8 @@ export const InstalledPackRecordSchema = z.object({
   installedMcp: z.array(z.string()).default([]),
   installedSkills: z.array(z.string()).default([]),
   installedPlugins: z.array(z.string()).default([]),
-  envKeys: z.array(z.string()).optional().default([]),
+  installedAgents: z.array(z.string()).optional(),
+  envKeys: z.array(z.string()).optional(),
   installedAt: z.string(),
   updatedAt: z.string().optional()
 });

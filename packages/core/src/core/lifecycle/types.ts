@@ -53,6 +53,7 @@ export interface AfterInstallContext {
   installedMcp: string[];
   installedSkills: string[];
   installedPlugins: string[];
+  installedAgents?: string[];
   options?: InstallCommandOptions;
   isAgentMode: boolean;
 }

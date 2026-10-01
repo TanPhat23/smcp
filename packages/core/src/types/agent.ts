@@ -24,11 +24,11 @@ export const UniversalAgentFrontmatterSchema = z
   .object({
     name: z.string().regex(/^[a-zA-Z0-9_-]+$/, "Name must be alphanumeric, hyphen, or underscore"),
     description: z.string().min(1, "Description is required"),
-    mode: z.enum(["subagent", "primary", "all"]).optional().default("subagent"),
+    mode: z.enum(["subagent", "primary", "all"]).optional(),
     model: z.string().optional(),
     temperature: z.number().optional(),
     tools: AgentToolsSchema.optional(),
-    skills: z.array(z.string()).optional().default([]),
+    skills: z.array(z.string()).optional(),
     codex: z.record(z.string(), z.unknown()).optional(),
     opencode: z.record(z.string(), z.unknown()).optional(),
     claude: z.record(z.string(), z.unknown()).optional(),

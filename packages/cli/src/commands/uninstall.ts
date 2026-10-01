@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import {
+  expandHome,
+  getAgentProfiles,
   getInstalledPack,
   getInstalledPacks,
+  isGlobalConfigPath,
+  isPrototypePollutionKey,
+  isStrictlyInside,
   removeInstalledPack,
   uninstallPackFromAgents
 } from "@tanphat/smcp-core";
@@ -81,6 +88,51 @@ export async function uninstallCommand(
   const result = uninstallPackFromAgents(record);
   removeInstalledPack(targetName);
 
+  const removedAgents: string[] = [...(result.removedAgents || [])];
+
+  if (record.installedAgents && record.installedAgents.length > 0) {
+    const allProfiles = getAgentProfiles();
+    const targetAgentIds =
+      record.targetAgents && record.targetAgents.length > 0
+        ? record.targetAgents
+        : Object.keys(allProfiles);
+
+    for (const agentId of targetAgentIds) {
+      const profile = allProfiles[agentId];
+      if (!profile?.agents?.paths) continue;
+      for (const p of profile.agents.paths) {
+        const candidateDir = isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p);
+        if (fs.existsSync(candidateDir)) {
+          try {
+            const canonicalBase = fs.realpathSync(candidateDir);
+            for (const agentName of record.installedAgents) {
+              if (!agentName || isPrototypePollutionKey(agentName)) continue;
+              const fileCandidates = [`${agentName}.md`, agentName];
+              for (const fName of fileCandidates) {
+                const targetFile = path.resolve(candidateDir, fName);
+                if (fs.existsSync(targetFile)) {
+                  try {
+                    const realTarget = fs.realpathSync(targetFile);
+                    if (isStrictlyInside(canonicalBase, realTarget)) {
+                      fs.rmSync(realTarget, { force: true });
+                      if (!removedAgents.includes(agentName)) {
+                        removedAgents.push(agentName);
+                      }
+                    }
+                  } catch {
+                    // Ignore removal error
+                  }
+                }
+              }
+            }
+          } catch {
+            // Ignore dir realpath error
+          }
+        }
+      }
+    }
+  }
+
   if (isAgentMode) {
     console.log(
       JSON.stringify(
@@ -89,7 +141,8 @@ export async function uninstallCommand(
           pack: targetName,
           removedMcp: result.removedMcp,
           removedSkills: result.removedSkills,
-          removedPlugins: result.removedPlugins
+          removedPlugins: result.removedPlugins,
+          removedAgents
         },
         null,
         2
@@ -107,6 +160,9 @@ export async function uninstallCommand(
   }
   if (result.removedPlugins.length > 0) {
     p.log.info(`Removed plugins: ${result.removedPlugins.join(", ")}`);
+  }
+  if (removedAgents.length > 0) {
+    p.log.info(`Removed agents: ${removedAgents.join(", ")}`);
   }
   p.outro("");
 }

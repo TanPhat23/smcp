@@ -4,18 +4,21 @@ import {
   detectAvailableRuntime,
   expandHome,
   getAgentProfiles,
+  installAgentFiles,
   installPluginFiles,
   installSkillFiles,
   isGlobalConfigPath,
   mergeMcpServersIntoFile,
   mergePluginsIntoFile,
+  parseAgentMarkdown,
   resolveActiveAgentPath,
   transformMcpServerRuntime,
   type AgentProfile,
   type Manifest,
-  type McpServerConfig
+  type McpServerConfig,
+  type UniversalAgent
 } from "@tanphat/smcp-core";
-import { extractPluginFiles, extractSkillFiles } from "./extract.ts";
+import { extractAgentContent, extractPluginFiles, extractSkillFiles } from "./extract.ts";
 
 export { resolveActiveAgentPath };
 export const resolveActivePath = resolveActiveAgentPath;
@@ -147,6 +150,8 @@ export interface WrittenAgentPaths {
   skills?: string[];
   pluginDir?: string;
   plugins?: string[];
+  agentsDir?: string;
+  agents?: string[];
 }
 
 export function installPackIntoAgents(
@@ -163,12 +168,14 @@ export function installPackIntoAgents(
   installedMcp: string[];
   installedSkills: string[];
   installedPlugins: string[];
+  installedAgents: string[];
   writtenPaths: Record<string, WrittenAgentPaths>;
 } {
   const activeProfiles = profiles || getAgentProfiles();
   const installedMcp: string[] = [];
   const installedSkills: string[] = [];
   const installedPlugins: string[] = [];
+  const installedAgents: string[] = [];
   const writtenPaths: Record<string, WrittenAgentPaths> = {};
 
   const effectiveRuntime = runtime || detectAvailableRuntime();
@@ -312,7 +319,54 @@ export function installPackIntoAgents(
         }
       }
     }
+
+    // Install Agents
+    if (
+      profile.agents &&
+      profile.agents.paths &&
+      profile.agents.paths.length > 0 &&
+      manifest.agents &&
+      manifest.agents.length > 0
+    ) {
+      const primaryAgentsDir = resolveActiveAgentPath(profile.agents.paths, { scope });
+      if (primaryAgentsDir) {
+        const installedAgentNames: string[] = [];
+        for (const agent of manifest.agents) {
+          const content = extractAgentContent(agent, rawFiles, localDir);
+          let agentObj: UniversalAgent;
+          try {
+            agentObj = parseAgentMarkdown(content, agent.path || agent.name);
+          } catch {
+            agentObj = {
+              name: agent.name,
+              description: agent.description || agent.name,
+              mode: agent.mode || "subagent",
+              model: agent.model,
+              skills: [],
+              prompt: content
+            };
+          }
+
+          if (!agentObj.description && agent.description) {
+            agentObj.description = agent.description;
+          }
+
+          try {
+            installAgentFiles(primaryAgentsDir, agentObj, agentId);
+            installedAgentNames.push(agent.name);
+          } catch {
+            // Ignore installation error for unsupported harnesses
+          }
+        }
+
+        if (installedAgentNames.length > 0) {
+          installedAgents.push(agentId);
+          writtenPaths[agentId].agentsDir = primaryAgentsDir;
+          writtenPaths[agentId].agents = installedAgentNames;
+        }
+      }
+    }
   }
 
-  return { installedMcp, installedSkills, installedPlugins, writtenPaths };
+  return { installedMcp, installedSkills, installedPlugins, installedAgents, writtenPaths };
 }

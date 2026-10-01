@@ -5,13 +5,14 @@ import { isStrictlyInside } from "./helpers.ts";
 import { expandHome } from "../../utils/paths.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
-import { resolveActiveAgentPath } from "../agents/detector.ts";
+import { resolveActiveAgentPath, isGlobalConfigPath } from "../agents/detector.ts";
 import type { AgentProfile, InstalledPackRecord } from "../../types/index.ts";
 
 export interface UninstallResult {
   removedMcp: string[];
   removedSkills: string[];
   removedPlugins: string[];
+  removedAgents: string[];
 }
 
 export function uninstallPackFromAgents(
@@ -22,6 +23,7 @@ export function uninstallPackFromAgents(
   const removedMcp: string[] = [];
   const removedSkills: string[] = [];
   const removedPlugins: string[] = [];
+  const removedAgents: string[] = [];
 
   const targetAgentIds = record.targetAgents || [];
 
@@ -145,7 +147,50 @@ export function uninstallPackFromAgents(
         }
       }
     }
+
+    // 4. Remove agent files
+    if (
+      profile.agents &&
+      profile.agents.paths &&
+      profile.agents.paths.length > 0 &&
+      record.installedAgents &&
+      record.installedAgents.length > 0
+    ) {
+      for (const p of profile.agents.paths) {
+        const candidateDir = isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p);
+        if (fs.existsSync(candidateDir)) {
+          try {
+            const canonicalBase = fs.realpathSync(candidateDir);
+            for (const agentName of record.installedAgents) {
+              if (!agentName || isPrototypePollutionKey(agentName)) continue;
+              const fileCandidates = [
+                `${agentName}.md`,
+                agentName
+              ];
+              for (const fName of fileCandidates) {
+                const targetFile = path.resolve(candidateDir, fName);
+                if (fs.existsSync(targetFile)) {
+                  try {
+                    const realTarget = fs.realpathSync(targetFile);
+                    if (isStrictlyInside(canonicalBase, realTarget)) {
+                      fs.rmSync(realTarget, { force: true });
+                      if (!removedAgents.includes(agentName)) {
+                        removedAgents.push(agentName);
+                      }
+                    }
+                  } catch {
+                    // Ignore removal failure
+                  }
+                }
+              }
+            }
+          } catch {
+            // Ignore dir realpath failure
+          }
+        }
+      }
+    }
   }
 
-  return { removedMcp, removedSkills, removedPlugins };
+  return { removedMcp, removedSkills, removedPlugins, removedAgents };
 }
