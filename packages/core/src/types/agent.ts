@@ -82,3 +82,9 @@ export const AgentEntrySchema = z
 
 export type AgentEntry = z.infer<typeof AgentEntrySchema>;
 
+export interface CompiledAgentFile {
+  filename: string;
+  content: string;
+}
+
+
