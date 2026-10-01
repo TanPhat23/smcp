@@ -137,8 +137,10 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
       options: {
         "Select all / Deselect all": serverNames.map((name) => {
           const s = availableServers[name];
-          let hint = s.command || s.url || "configured";
-          if (s.command && s.args && s.args.length > 0) {
+          let hint = Array.isArray(s.command)
+            ? s.command.join(" ")
+            : (s.command || s.url || "configured");
+          if (typeof s.command === "string" && s.args && s.args.length > 0) {
             hint = `${s.command} ${s.args.join(" ")}`;
           }
           return {

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const McpServerConfigSchema = z
   .object({
-    command: z.string().optional(),
+    command: z.union([z.string(), z.array(z.string())]).optional(),
     args: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),
     url: z.string().url().optional()

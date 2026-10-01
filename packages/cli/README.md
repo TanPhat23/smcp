@@ -38,7 +38,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.7
+# Output: 0.1.8
 ```
 
 ---
@@ -94,6 +94,9 @@ smcp install <source> -a opencode -f -y --json
 
 # Pass required environment variables inline:
 smcp install <source> -a opencode -f -y -e DB_PASSWORD=my_secret DB_URL=postgres://...
+
+# Specify package runner runtime (e.g. npx for npm users, bunx for bun users):
+smcp install <source> -a opencode -f -y -r npx
 ```
 
 ### 4. Bundle & Share Skills, MCPs & Plugins

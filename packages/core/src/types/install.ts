@@ -3,6 +3,7 @@ export interface InstallCommandOptions {
   force?: boolean;
   env?: Record<string, string>;
   pluginDir?: string;
+  runtime?: string;
   json?: boolean;
   yes?: boolean;
 }

@@ -270,7 +270,8 @@ export async function installCommand(
       rawFiles,
       localDir,
       allProfiles,
-      options?.pluginDir
+      options?.pluginDir,
+      options?.runtime
     );
 
     try {

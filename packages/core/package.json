@@ -1,6 +1,6 @@
 {
   "name": "@tanphat/smcp-core",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Headless core SDK for AI Agent Skills and MCP server configurations",
   "type": "module",
   "main": "dist/index.js",

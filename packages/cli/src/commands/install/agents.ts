@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  detectAvailableRuntime,
   expandHome,
   getAgentProfiles,
   installPluginFiles,
@@ -8,6 +9,7 @@ import {
   mergeMcpServersIntoFile,
   mergePluginsIntoFile,
   resolveActiveAgentPath,
+  transformMcpServerRuntime,
   type AgentProfile,
   type Manifest,
   type McpServerConfig
@@ -144,12 +146,19 @@ export function installPackIntoAgents(
   rawFiles?: Record<string, string>,
   localDir?: string,
   profiles?: Record<string, AgentProfile>,
-  customPluginDir?: string
+  customPluginDir?: string,
+  runtime?: string
 ): { installedMcp: string[]; installedSkills: string[]; installedPlugins: string[] } {
   const activeProfiles = profiles || getAgentProfiles();
   const installedMcp: string[] = [];
   const installedSkills: string[] = [];
   const installedPlugins: string[] = [];
+
+  const effectiveRuntime = runtime || detectAvailableRuntime();
+  const transformedServers: Record<string, McpServerConfig> = {};
+  for (const [sName, sConf] of Object.entries(resolvedServers)) {
+    transformedServers[sName] = transformMcpServerRuntime(sConf, effectiveRuntime);
+  }
 
   for (const agentId of targetAgentIds) {
     const profile = activeProfiles[agentId];
@@ -160,11 +169,11 @@ export function installPackIntoAgents(
       profile.mcpConfig &&
       profile.mcpConfig.paths &&
       profile.mcpConfig.paths.length > 0 &&
-      Object.keys(resolvedServers).length > 0
+      Object.keys(transformedServers).length > 0
     ) {
       const primaryPath = resolveActiveAgentPath(profile.mcpConfig.paths);
       if (primaryPath) {
-        mergeMcpServersIntoFile(primaryPath, resolvedServers, {
+        mergeMcpServersIntoFile(primaryPath, transformedServers, {
           mcpKey: profile.mcpConfig.key || "mcpServers",
           format: profile.mcpConfig.format,
           agentId
