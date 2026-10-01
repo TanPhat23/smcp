@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { UniversalAgent } from "../../types/index.ts";
 import { atomicWriteFileSync } from "../../utils/fs.ts";
+import { expandHome } from "../../utils/paths.ts";
 import { containsNullByte, isPrototypePollutionKey, isWindowsReservedName } from "../../utils/security.ts";
 import { isStrictlyInside } from "../merger/helpers.ts";
 import { compileAgentForHarness } from "./compilers/index.ts";
@@ -89,7 +90,7 @@ export function installAgentFiles(
   }
 
   const finalFilename = safeBasename || `${agent.name || "agent"}.md`;
-  const resolvedBaseDir = path.resolve(agentBaseDir);
+  const resolvedBaseDir = path.resolve(expandHome(agentBaseDir));
   const writtenPath = path.resolve(resolvedBaseDir, finalFilename);
 
   if (!isStrictlyInside(resolvedBaseDir, writtenPath)) {

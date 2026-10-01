@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -11,6 +11,27 @@ import {
 import type { UniversalAgent } from "../packages/core/src/types/agent.ts";
 
 describe("Agent Profiles & Installer", () => {
+  const tmpDirs: string[] = [];
+
+  function makeTmpDir(prefix = "smcp-installer-test-"): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    tmpDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const d of tmpDirs) {
+      try {
+        if (fs.existsSync(d)) {
+          fs.rmSync(d, { recursive: true, force: true });
+        }
+      } catch {
+        // ignore
+      }
+    }
+    tmpDirs.length = 0;
+  });
+
   it("has agents configuration on opencode and claude-code profiles", () => {
     const profiles = getAgentProfiles();
     expect(profiles.opencode.agents).toBeDefined();
@@ -26,7 +47,7 @@ describe("Agent Profiles & Installer", () => {
   });
 
   it("installs agent file cleanly in target directory with safe permissions", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "smcp-installer-test-"));
+    const tmp = makeTmpDir();
     const agentDir = path.join(tmp, "agents");
 
     const sampleAgent: UniversalAgent = {
@@ -46,7 +67,7 @@ describe("Agent Profiles & Installer", () => {
   });
 
   it("prevents path traversal when installing agent", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "smcp-installer-test-"));
+    const tmp = makeTmpDir();
     const sampleAgent: UniversalAgent = {
       name: "safe-name",
       description: "Adversarial reviewer",
@@ -60,8 +81,27 @@ describe("Agent Profiles & Installer", () => {
     expect(fs.existsSync(path.join(tmp, "escaped-cmd.md"))).toBe(true);
   });
 
+  it("expands tilde (~) in direct mode agentBaseDir", () => {
+    const testDirName = `.smcp-test-tilde-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const fullTestDir = path.join(os.homedir(), testDirName);
+    tmpDirs.push(fullTestDir);
+
+    const sampleAgent: UniversalAgent = {
+      name: "tilde-agent",
+      description: "Tilde expansion test agent",
+      prompt: "Execute task"
+    };
+
+    const res = installAgentFiles(`~/${testDirName}`, sampleAgent, "opencode");
+    expect(res.writtenPath).toBe(path.join(fullTestDir, "tilde-agent.md"));
+    expect(fs.existsSync(res.writtenPath)).toBe(true);
+
+    const content = fs.readFileSync(res.writtenPath, "utf8");
+    expect(content).toContain("name: tilde-agent");
+  });
+
   it("supports scoped agent installation via agent id and options", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "smcp-installer-test-"));
+    const tmp = makeTmpDir();
     const agent: UniversalAgent = {
       name: "planner",
       description: "Task planner",
@@ -79,7 +119,7 @@ describe("Agent Profiles & Installer", () => {
   });
 
   it("validates input arguments and throws appropriate errors", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "smcp-installer-test-"));
+    const tmp = makeTmpDir();
     const validAgent: UniversalAgent = {
       name: "tester",
       description: "Testing",
