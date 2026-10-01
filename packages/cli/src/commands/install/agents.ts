@@ -6,6 +6,7 @@ import {
   getAgentProfiles,
   installPluginFiles,
   installSkillFiles,
+  isGlobalConfigPath,
   mergeMcpServersIntoFile,
   mergePluginsIntoFile,
   resolveActiveAgentPath,
@@ -139,6 +140,15 @@ export function ensurePluginDependenciesResolvable(
   }
 }
 
+export interface WrittenAgentPaths {
+  config?: string;
+  scope?: "global" | "project";
+  skillsDir?: string;
+  skills?: string[];
+  pluginDir?: string;
+  plugins?: string[];
+}
+
 export function installPackIntoAgents(
   manifest: Manifest,
   targetAgentIds: string[],
@@ -147,12 +157,19 @@ export function installPackIntoAgents(
   localDir?: string,
   profiles?: Record<string, AgentProfile>,
   customPluginDir?: string,
-  runtime?: string
-): { installedMcp: string[]; installedSkills: string[]; installedPlugins: string[] } {
+  runtime?: string,
+  scope?: "global" | "project"
+): {
+  installedMcp: string[];
+  installedSkills: string[];
+  installedPlugins: string[];
+  writtenPaths: Record<string, WrittenAgentPaths>;
+} {
   const activeProfiles = profiles || getAgentProfiles();
   const installedMcp: string[] = [];
   const installedSkills: string[] = [];
   const installedPlugins: string[] = [];
+  const writtenPaths: Record<string, WrittenAgentPaths> = {};
 
   const effectiveRuntime = runtime || detectAvailableRuntime();
   const transformedServers: Record<string, McpServerConfig> = {};
@@ -165,21 +182,26 @@ export function installPackIntoAgents(
     if (!profile) continue;
 
     // Install MCP servers
+    let agentScope: "global" | "project" = scope || "global";
     if (
       profile.mcpConfig &&
       profile.mcpConfig.paths &&
       profile.mcpConfig.paths.length > 0 &&
       Object.keys(transformedServers).length > 0
     ) {
-      const primaryPath = resolveActiveAgentPath(profile.mcpConfig.paths);
+      const primaryPath = resolveActiveAgentPath(profile.mcpConfig.paths, { scope });
       if (primaryPath) {
+        agentScope = isGlobalConfigPath(primaryPath) ? "global" : "project";
         mergeMcpServersIntoFile(primaryPath, transformedServers, {
           mcpKey: profile.mcpConfig.key || "mcpServers",
           format: profile.mcpConfig.format,
           agentId
         });
         installedMcp.push(agentId);
+        writtenPaths[agentId] = { scope: agentScope, config: primaryPath };
       }
+    } else {
+      writtenPaths[agentId] = { scope: agentScope };
     }
 
     // Install Skills
@@ -190,13 +212,17 @@ export function installPackIntoAgents(
       manifest.skills &&
       manifest.skills.length > 0
     ) {
-      const primarySkillsDir = resolveActiveAgentPath(profile.skills.paths);
+      const primarySkillsDir = resolveActiveAgentPath(profile.skills.paths, { scope });
       if (primarySkillsDir) {
+        const installedSkillNames: string[] = [];
         for (const skill of manifest.skills) {
           const filesToInstall = extractSkillFiles(skill, rawFiles, localDir);
           installSkillFiles(primarySkillsDir, skill.name, filesToInstall);
+          installedSkillNames.push(skill.name);
         }
         installedSkills.push(agentId);
+        writtenPaths[agentId].skillsDir = primarySkillsDir;
+        writtenPaths[agentId].skills = installedSkillNames;
       }
     }
 
@@ -208,7 +234,7 @@ export function installPackIntoAgents(
       manifest.plugins &&
       manifest.plugins.length > 0
     ) {
-      const primaryPluginsConfig = resolveActiveAgentPath(profile.plugins.paths);
+      const primaryPluginsConfig = resolveActiveAgentPath(profile.plugins.paths, { scope });
       if (primaryPluginsConfig) {
         const compatiblePlugins = manifest.plugins.filter((pl) => {
           if (typeof pl === "string") return true;
@@ -238,9 +264,10 @@ export function installPackIntoAgents(
           // Extract any local plugin files if present
           const destPluginDir =
             customPluginDir ||
-            (profile.plugins.dirPaths ? resolveActiveAgentPath(profile.plugins.dirPaths) : undefined) ||
+            (profile.plugins.dirPaths ? resolveActiveAgentPath(profile.plugins.dirPaths, { scope }) : undefined) ||
             (isOpenCode ? "./.opencode/plugins" : "./plugin");
 
+          const installedPluginNames: string[] = [];
           for (const pl of compatiblePlugins) {
             const files = extractPluginFiles(pl, rawFiles, localDir);
             if (Object.keys(files).length > 0) {
@@ -249,7 +276,13 @@ export function installPackIntoAgents(
               if (isOpenCode) {
                 ensurePluginDependenciesResolvable(destPluginDir, files);
               }
+              installedPluginNames.push(pName);
             }
+          }
+
+          if (installedPluginNames.length > 0) {
+            writtenPaths[agentId].pluginDir = destPluginDir;
+            writtenPaths[agentId].plugins = installedPluginNames;
           }
 
           // For OpenCode: v2.0.20 rejects .ts file paths in plugins array ("configured plugin path must be a directory")
@@ -281,5 +314,5 @@ export function installPackIntoAgents(
     }
   }
 
-  return { installedMcp, installedSkills, installedPlugins };
+  return { installedMcp, installedSkills, installedPlugins, writtenPaths };
 }

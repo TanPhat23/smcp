@@ -49,7 +49,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.1.9")
+    .version("0.2.0")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions");
 
@@ -95,12 +95,21 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("-e, --env <vars...>", "Environment variables for installation in KEY=VALUE format")
     .option("--plugin-dir <dir>", "Directory to install local plugin scripts into")
     .option("-r, --runtime <runtime>", "Target package runner / runtime for MCP server commands (e.g. npx, npm, bunx, bun, pnpm)")
+    .option("-g, --global", "Install into global agent configuration")
+    .option("-p, --project", "Install into project-local configuration in current working directory")
+    .option("--native-env", "Emit agent-native env placeholders ({env:VAR} for OpenCode, ${VAR} for Claude) instead of baking literals")
     .option("-y, --yes", "Non-interactive mode, automatically accept defaults")
     .option("--json", "Output results in machine-readable JSON format for AI agents")
     .action(async (source, options) => {
       const parsedEnv = options.env ? parseEnvOptions(options.env) : undefined;
+      const scope: "global" | "project" | undefined = options.project
+        ? "project"
+        : options.global
+        ? "global"
+        : undefined;
       await installCommand(source, {
         ...options,
+        scope,
         env: parsedEnv
       });
     });

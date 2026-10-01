@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.1.9-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
@@ -61,7 +61,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.9
+# Output: 0.2.0
 ```
 
 ---
@@ -103,6 +103,16 @@ Install the pack across one or more AI agents in one command:
 
 ```bash
 smcp install https://gist.github.com/user/7f8a9b123456
+
+# Non-interactive / CI / AI Agent installation:
+smcp install <source> -a opencode -f -y --json
+
+# Scope: Global (~/.config/opencode) vs Project-local (./opencode.jsonc):
+smcp install <source> -a opencode -f -y --global
+smcp install <source> -a opencode -f -y --project
+
+# Defer credentials using agent-native placeholders ({env:VAR} for OpenCode):
+smcp install <source> -a opencode -f -y --native-env
 ```
 
 - Select target agent(s) (OpenCode, Claude Code, Cursor, Windsurf, Claude Desktop).

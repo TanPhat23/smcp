@@ -2,12 +2,21 @@ import type { McpServerConfig } from "@tanphat/smcp-core";
 
 export function resolveMcpServerTemplates(
   servers: Record<string, McpServerConfig>,
-  envValues: Record<string, string>
+  envValues: Record<string, string>,
+  options?: { nativeEnvAgent?: string; useNativeEnv?: boolean }
 ): Record<string, McpServerConfig> {
+  const isOpencode =
+    options?.nativeEnvAgent === "opencode" ||
+    (typeof options?.nativeEnvAgent === "string" && options.nativeEnvAgent.includes("opencode"));
+  const fallbackPlaceholder = (v: string) => (isOpencode ? `{env:${v}}` : `\${${v}}`);
+
   const replaceVar = (_: string, varName: string) => {
+    if (options?.useNativeEnv) {
+      return fallbackPlaceholder(varName);
+    }
     return Object.hasOwn(envValues, varName) && envValues[varName] !== undefined
       ? envValues[varName]
-      : `\${${varName}}`;
+      : fallbackPlaceholder(varName);
   };
 
   const resolvedServers: Record<string, McpServerConfig> = {};

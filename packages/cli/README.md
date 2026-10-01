@@ -38,7 +38,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.9
+# Output: 0.2.0
 ```
 
 ---
@@ -97,6 +97,13 @@ smcp install <source> -a opencode -f -y -e DB_PASSWORD=my_secret DB_URL=postgres
 
 # Specify package runner runtime (e.g. npx for npm users, bunx for bun users):
 smcp install <source> -a opencode -f -y -r npx
+
+# Choose installation scope (global by default; project-local with --project):
+smcp install <source> -a opencode -f -y --global
+smcp install <source> -a opencode -f -y --project
+
+# Emit agent-native env placeholders ({env:VAR} for OpenCode, ${VAR} for Claude):
+smcp install <source> -a opencode -f -y --native-env
 ```
 
 ### 4. Check for Updates & Outdated Packs

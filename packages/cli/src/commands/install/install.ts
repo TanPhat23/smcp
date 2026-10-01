@@ -1,10 +1,12 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
   collectRequiredEnv,
   detectAgents,
+  detectAvailableRuntime,
   getAgentProfiles,
   installSkillFiles,
   loadPackFromSource,
@@ -32,7 +34,7 @@ export async function installCommand(
   }
 
   let sFetch: any;
-  if (!isAgentMode) {
+  if (!isAgentMode && process.stdout.isTTY) {
     sFetch = p.spinner();
     sFetch.start(`Fetching pack from ${source}...`);
   }
@@ -162,9 +164,10 @@ export async function installCommand(
     }
 
     if (unresolved.length > 0) {
-      if (options?.json || options?.yes) {
+      const isInteractive = Boolean(process.stdin.isTTY && !options?.json && !options?.yes);
+      if (!isInteractive) {
         const missingKeys = unresolved.map((r) => r.key);
-        const errMsg = `Missing required environment variable(s): ${missingKeys.join(", ")}. Provide them via environment or --env KEY=VALUE.`;
+        const errMsg = `Missing required environment variable(s): ${missingKeys.join(", ")}. Interactive prompts are not supported in non-TTY environments. Use -y / --yes and provide environment variables with -e KEY=VALUE or set them in the environment.`;
         if (isAgentMode) {
           console.error(
             JSON.stringify({
@@ -174,7 +177,8 @@ export async function installCommand(
             })
           );
         } else {
-          p.cancel(errMsg);
+          console.error(pc.red(`✖ ${errMsg}`));
+          process.exitCode = 1;
         }
         return;
       }
@@ -195,8 +199,49 @@ export async function installCommand(
     }
   }
 
+  // Validate empty secrets or required env values
+  const warnings: string[] = [];
+  for (const req of requiredEnvList) {
+    if (envValues[req.key] === "") {
+      const w = `Warning: '${req.key}' was provided as an empty string. The server may fail authentication.`;
+      warnings.push(w);
+      if (!isAgentMode) {
+        p.log.warn(pc.yellow(w));
+      }
+    }
+  }
+
   // Resolve templated MCP servers (including env, args, and url)
-  const resolvedServers = resolveMcpServerTemplates(manifest.mcpServers || {}, envValues);
+  const resolvedServers = resolveMcpServerTemplates(manifest.mcpServers || {}, envValues, {
+    nativeEnvAgent: targetAgentIds[0],
+    useNativeEnv: options?.nativeEnv
+  });
+
+  // Preflight check executables
+  for (const [sName, sConf] of Object.entries(resolvedServers)) {
+    const cmdTokens = Array.isArray(sConf.command)
+      ? sConf.command.map(String)
+      : (sConf.command || "").trim().split(/\s+/);
+    const bin = cmdTokens[0];
+    if (bin) {
+      if (bin === "bunx" && detectAvailableRuntime() !== "bunx") {
+        if (!isAgentMode) {
+          p.log.info(pc.dim(`ℹ Server '${sName}' uses bunx, which will be auto-translated to npx -y.`));
+        }
+      } else if (["python", "python3", "docker", "uvx"].includes(bin)) {
+        try {
+          const checkCmd = process.platform === "win32" ? `where ${bin}` : `which ${bin}`;
+          execSync(checkCmd, { stdio: "ignore" });
+        } catch {
+          const w = `Preflight warning: executable '${bin}' was not found in PATH for server '${sName}'. You may need to install it.`;
+          warnings.push(w);
+          if (!isAgentMode) {
+            p.log.warn(pc.yellow(w));
+          }
+        }
+      }
+    }
+  }
 
   // Check conflicts across target agents if not forced
   if (!options?.force && !options?.yes && !options?.json) {
@@ -249,9 +294,13 @@ export async function installCommand(
     }
   }
 
+  // Determine requested scope (undefined means auto-detect: existing project config -> project, else global)
+  const requestedScope: "global" | "project" | undefined =
+    options?.scope || (options?.project ? "project" : options?.global ? "global" : undefined);
+
   // Perform Installation
   let sInst: any;
-  if (!isAgentMode) {
+  if (!isAgentMode && process.stdout.isTTY) {
     sInst = p.spinner();
     sInst.start("Installing skills and configuring MCP servers...");
   }
@@ -274,8 +323,12 @@ export async function installCommand(
       localDir,
       allProfiles,
       options?.pluginDir,
-      options?.runtime
+      options?.runtime,
+      requestedScope
     );
+
+    const firstWritten = targetAgentIds[0] ? result.writtenPaths[targetAgentIds[0]] : undefined;
+    const effectiveScope: "global" | "project" = requestedScope || firstWritten?.scope || "global";
 
     recordInstalledPack({
       name: manifest.name,
@@ -293,7 +346,7 @@ export async function installCommand(
     for (const agentId of targetAgentIds) {
       const profile = allProfiles[agentId];
       if (profile?.skills?.paths && profile.skills.paths.length > 0) {
-        const skillsDir = resolveActiveAgentPath(profile.skills.paths);
+        const skillsDir = resolveActiveAgentPath(profile.skills.paths, { scope: requestedScope });
         if (skillsDir) {
           try {
             installSkillFiles(skillsDir, "smcp", {
@@ -333,10 +386,13 @@ export async function installCommand(
             success: true,
             pack: manifest.name,
             version: manifest.version,
+            scope: effectiveScope,
             targetAgents: targetAgentIds,
             installedMcp: Object.keys(resolvedServers),
             installedSkills: (manifest.skills || []).map((s) => s.name),
-            installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name))
+            installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
+            writtenPaths: result.writtenPaths,
+            warnings: warnings.length > 0 ? warnings : undefined
           },
           null,
           2
@@ -347,7 +403,23 @@ export async function installCommand(
 
     if (sInst) {
       sInst.stop(pc.green("✔ Installation completed!"));
+    } else {
+      p.log.success(pc.green("✔ Installation completed!"));
     }
+    p.log.message(pc.dim(`Scope: ${pc.bold(effectiveScope)} (use ${effectiveScope === "global" ? "--project" : "--global"} to change)`));
+    console.log(pc.bold("\nWritten Configurations:"));
+    for (const [agentId, written] of Object.entries(result.writtenPaths)) {
+      if (written.config) {
+        console.log(`  • ${pc.cyan(agentId)} MCP config (${written.scope}): ${pc.dim(written.config)}`);
+      }
+      if (written.skillsDir && written.skills && written.skills.length > 0) {
+        console.log(`  • ${pc.cyan(agentId)} skills: ${pc.dim(written.skillsDir)} [${written.skills.join(", ")}]`);
+      }
+      if (written.pluginDir && written.plugins && written.plugins.length > 0) {
+        console.log(`  • ${pc.cyan(agentId)} plugins: ${pc.dim(written.pluginDir)} [${written.plugins.join(", ")}]`);
+      }
+    }
+    console.log("");
     p.outro(pc.green(`Pack '${manifest.name}' is now active in: ${targetAgentIds.join(", ")}`));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

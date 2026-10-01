@@ -4,6 +4,10 @@ export interface InstallCommandOptions {
   env?: Record<string, string>;
   pluginDir?: string;
   runtime?: string;
+  scope?: "global" | "project";
+  project?: boolean;
+  global?: boolean;
+  nativeEnv?: boolean;
   json?: boolean;
   yes?: boolean;
 }
