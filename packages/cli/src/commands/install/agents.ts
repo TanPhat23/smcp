@@ -361,6 +361,7 @@ export function installPackIntoAgents(
 
         if (installedAgentNames.length > 0) {
           installedAgents.push(agentId);
+          writtenPaths[agentId] = writtenPaths[agentId] || { scope: agentScope };
           writtenPaths[agentId].agentsDir = primaryAgentsDir;
           writtenPaths[agentId].agents = installedAgentNames;
         }

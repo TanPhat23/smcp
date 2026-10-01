@@ -252,6 +252,10 @@ export function extractAgentContent(
     if (normalizedPath && rawFiles[normalizedPath]) {
       return rawFiles[normalizedPath];
     }
+    const strippedPath = normalizedPath.replace(/^\.\//, "");
+    if (strippedPath && rawFiles[strippedPath]) {
+      return rawFiles[strippedPath];
+    }
     const candidates = [
       `agents/${agent.name}.md`,
       `agents/${agent.name}`,

@@ -257,4 +257,16 @@ describe("Install, State Tracking & Uninstall of Agents", () => {
     expect(result.removedAgents).toContain("cleanme");
     expect(fs.existsSync(agentFile)).toBe(false);
   });
+
+  it("extracts agent content from rawFiles when path has ./ prefix but rawFiles key does not", () => {
+    const { extractAgentContent } = require("../packages/cli/src/commands/install/extract.ts");
+    const rawFiles: Record<string, string> = {
+      "agents/specialist.md": "---\nname: specialist\ndescription: Special\n---\nPrompt"
+    };
+    const content = extractAgentContent(
+      { name: "specialist", path: "./agents/specialist.md" },
+      rawFiles
+    );
+    expect(content).toContain("Prompt");
+  });
 });
