@@ -72,7 +72,13 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("-d, --description <description>", "Pack description override")
     .option("--json", "Output packaging result in JSON format")
     .action(async (dir, options) => {
-      await packCommand(dir, options);
+      await packCommand(dir, {
+        output: options.output,
+        name: options.name,
+        version: options.version,
+        description: options.description,
+        json: options.json
+      });
     });
 
   program

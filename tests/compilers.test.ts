@@ -116,6 +116,15 @@ describe("Agent Compilers (Minimal: OpenCode & Claude Code)", () => {
     };
     const resWin = compileAgentForHarness(windowsSlashAgent, "claude-code");
     expect(resWin.filename).toBe("evil_win.md");
+
+    const emptyCmdAndNameAgent: UniversalAgent = {
+      name: "...",
+      description: "Empty name test",
+      claude: { command: "../../../" },
+      prompt: "Prompt"
+    };
+    const resFallback = compileAgentForHarness(emptyCmdAndNameAgent, "claude-code");
+    expect(resFallback.filename).toBe("agent.md");
   });
 
   it("skips prototype pollution keys in opencode overrides and permissions", () => {

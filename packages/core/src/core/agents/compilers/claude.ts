@@ -21,11 +21,12 @@ export function compileClaudeAgent(agent: UniversalAgent): CompiledAgentFile {
       : agent.name;
 
   // Sanitize path traversal characters across both POSIX and Windows separators
-  const normalizedCmd = rawCmd.replace(/\\/g, "/");
+  const normalizedCmd = (rawCmd || "").replace(/\\/g, "/");
   const baseCmd = path.basename(normalizedCmd).trim().replace(/^\.+/, "");
-  const safeName = baseCmd || agent.name;
+  const fallbackName = agent.name ? path.basename(agent.name.replace(/\\/g, "/")).trim().replace(/^\.+/, "") : "";
+  const safeName = baseCmd || fallbackName || "agent";
   const baseName = safeName.endsWith(".md") ? safeName.slice(0, -3) : safeName;
-  const filename = `${baseName || agent.name}.md`;
+  const filename = `${baseName || "agent"}.md`;
 
   const frontmatter: Record<string, unknown> = {
     description: agent.description

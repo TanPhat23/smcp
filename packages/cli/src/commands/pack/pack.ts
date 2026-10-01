@@ -3,6 +3,8 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import {
+  atomicWriteFileSync,
+  isStrictlyInside,
   parseAgentMarkdown,
   type AgentEntry,
   type Manifest,
@@ -41,8 +43,19 @@ export function bundleAgentFiles(
     let content = (agent as DiscoveredAgent).rawContent;
     const relPath = agent.path || path.posix.join("agents", `${agent.name}.md`);
 
+    if (agent.path) {
+      const normalizedPath = agent.path.replace(/\\/g, "/");
+      if ((path.isAbsolute(normalizedPath) || normalizedPath.split("/").includes("..")) && !baseDir) {
+        continue;
+      }
+    }
+
+    const fullPath = baseDir ? path.resolve(baseDir, relPath) : path.resolve(relPath);
+    if (baseDir && !isStrictlyInside(path.resolve(baseDir), fullPath)) {
+      continue;
+    }
+
     if (!content) {
-      const fullPath = baseDir ? path.resolve(baseDir, relPath) : path.resolve(relPath);
       if (fs.existsSync(fullPath)) {
         try {
           content = fs.readFileSync(fullPath, "utf8");
@@ -89,6 +102,7 @@ export interface PackOptions {
   name?: string;
   version?: string;
   description?: string;
+  output?: string;
   outputDir?: string;
   json?: boolean;
 }
@@ -176,19 +190,22 @@ export async function packDirectory(
   gistFiles["smcp.json"] = { content: manifestContent };
 
   // Write to outputDir if provided
-  if (options?.outputDir) {
-    const outDir = path.resolve(options.outputDir);
-    fs.mkdirSync(outDir, { recursive: true });
+  const outDir = options?.output || options?.outputDir;
+  if (outDir) {
+    const resolvedOutDir = path.resolve(outDir);
+    fs.mkdirSync(resolvedOutDir, { recursive: true });
     for (const [filePath, fileContent] of Object.entries(rawFiles)) {
-      const targetPath = path.join(outDir, filePath);
-      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-      fs.writeFileSync(targetPath, fileContent, "utf8");
+      const targetPath = path.resolve(resolvedOutDir, filePath);
+      if (!isStrictlyInside(resolvedOutDir, targetPath)) {
+        continue;
+      }
+      atomicWriteFileSync(targetPath, fileContent);
     }
     return {
       manifest,
       rawFiles,
       gistFiles,
-      outputDir: outDir
+      outputDir: resolvedOutDir
     };
   }
 
@@ -204,6 +221,7 @@ export async function packDirectory(
  */
 export async function packCommand(dir: string = ".", options?: PackOptions): Promise<PackedResult | null> {
   const isJson = Boolean(options?.json);
+  const outDir = options?.output || options?.outputDir;
 
   try {
     const result = await packDirectory(dir, options);

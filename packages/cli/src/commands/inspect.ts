@@ -161,17 +161,7 @@ export async function inspectCommand(
   }
 
   // Display Agents
-  const agents = manifest.agents || [];
-  console.log(`\n${pc.bold(pc.cyan(`🤖 Agents (${agents.length}):`))}`);
-  if (agents.length === 0) {
-    console.log(`  ${pc.dim("(none)")}`);
-  } else {
-    for (const ag of agents) {
-      const mode = ag.mode || "subagent";
-      const desc = ag.description ? ` — ${ag.description}` : "";
-      console.log(`  • ${pc.bold(ag.name)}${pc.dim(` (${mode})`)}${desc}`);
-    }
-  }
+  console.log(`\n` + formatInspectAgents(manifest.agents || []));
 
   p.note(
     `To install this pack, run:\n  smcp install ${source}`,

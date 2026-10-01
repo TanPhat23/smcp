@@ -269,4 +269,79 @@ describe("Install, State Tracking & Uninstall of Agents", () => {
     );
     expect(content).toContain("Prompt");
   });
+
+  it("installs agent with claude custom command override, tracks aliases in installed.json, and uninstalls cleanly without leaving orphans", () => {
+    const tmp = makeTmpDir();
+    const homeDir = path.join(tmp, "home");
+    const packDir = path.join(tmp, "pack");
+    fs.mkdirSync(path.join(packDir, "agents"), { recursive: true });
+    fs.mkdirSync(homeDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(packDir, "smcp.json"),
+      JSON.stringify({
+        name: "override-pack",
+        version: "1.0.0",
+        agents: [
+          {
+            name: "reviewer",
+            path: "./agents/reviewer.md",
+            description: "Code reviewer"
+          }
+        ]
+      })
+    );
+    fs.writeFileSync(
+      path.join(packDir, "agents", "reviewer.md"),
+      `---\nname: reviewer\ndescription: Code reviewer\nmode: subagent\nclaude:\n  command: custom-cmd\n---\nReview code.`
+    );
+
+    const binSmcp = path.resolve("./packages/cli/dist/cli.js");
+    const env = {
+      ...process.env,
+      HOME: homeDir,
+      USERPROFILE: homeDir,
+      SMCP_DIR: path.join(homeDir, ".smcp")
+    };
+
+    // 1. Install into opencode and claude
+    const installOut = execSync(
+      `node "${binSmcp}" install "${packDir}" -a opencode,claude -f -y --global --json`,
+      {
+        cwd: tmp,
+        encoding: "utf8",
+        env
+      }
+    );
+    const parsedInstall = JSON.parse(installOut);
+    expect(parsedInstall.success).toBe(true);
+    expect(parsedInstall.installedAgents).toContain("reviewer");
+    expect(parsedInstall.installedAgents).toContain("custom-cmd");
+
+    const opencodeAgentPath = path.join(homeDir, ".config", "opencode", "agents", "reviewer.md");
+    const claudeAgentPath = path.join(homeDir, ".claude", "commands", "custom-cmd.md");
+    expect(fs.existsSync(opencodeAgentPath)).toBe(true);
+    expect(fs.existsSync(claudeAgentPath)).toBe(true);
+
+    // 2. Verify state in ~/.smcp/installed.json tracks both reviewer and custom-cmd
+    const installedJsonPath = path.join(homeDir, ".smcp", "installed.json");
+    expect(fs.existsSync(installedJsonPath)).toBe(true);
+    const installedRecords = JSON.parse(fs.readFileSync(installedJsonPath, "utf8"));
+    expect(installedRecords["override-pack"].installedAgents).toContain("reviewer");
+    expect(installedRecords["override-pack"].installedAgents).toContain("custom-cmd");
+
+    // 3. Uninstall
+    const uninstallOut = execSync(
+      `node "${binSmcp}" uninstall override-pack -y --json`,
+      {
+        cwd: tmp,
+        encoding: "utf8",
+        env
+      }
+    );
+    const parsedUninstall = JSON.parse(uninstallOut);
+    expect(parsedUninstall.success).toBe(true);
+    expect(fs.existsSync(opencodeAgentPath)).toBe(false);
+    expect(fs.existsSync(claudeAgentPath)).toBe(false);
+  });
 });

@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  atomicWriteFileSync,
   installPluginFiles,
   installSkillFiles,
+  isStrictlyInside,
   type AgentEntry,
   type Manifest,
   type PluginEntry,
@@ -35,11 +37,16 @@ export function exportPackLocally(
   }
 
   if (bundledAgents && bundledAgents.length > 0) {
-    const agentsDir = path.join(outDir, "agents");
+    const agentsDir = path.resolve(outDir, "agents");
     fs.mkdirSync(agentsDir, { recursive: true });
     for (const ag of bundledAgents) {
       if (ag.rawContent) {
-        fs.writeFileSync(path.join(agentsDir, `${ag.name}.md`), ag.rawContent, "utf8");
+        const safeName = path.basename(ag.name);
+        const targetPath = path.resolve(agentsDir, `${safeName}.md`);
+        if (!isStrictlyInside(agentsDir, targetPath)) {
+          continue;
+        }
+        atomicWriteFileSync(targetPath, ag.rawContent);
       }
     }
   }

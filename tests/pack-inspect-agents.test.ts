@@ -2,10 +2,12 @@ import { describe, expect, it, afterEach } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { createProgram } from "../packages/cli/src/cli.ts";
 import { discoverPackComponents } from "../packages/cli/src/commands/pack/discovery.ts";
 import { inspectCommand } from "../packages/cli/src/commands/inspect.ts";
 import { bundleAgentFiles, packCommand, packDirectory } from "../packages/cli/src/commands/pack/pack.ts";
 import { formatInspectAgents } from "../packages/cli/src/commands/inspect.ts";
+import { exportPackLocally } from "../packages/cli/src/commands/share/export.ts";
 
 const tmpDirs: string[] = [];
 function makeTmpDir(): string {
@@ -194,5 +196,78 @@ describe("Pack Discovery & Inspect with Agents", () => {
     );
 
     expect(() => discoverPackComponents(tmp)).toThrow(/Invalid frontmatter/);
+  });
+
+  it("packs a directory via CLI option -o into target outDir", async () => {
+    const tmp = makeTmpDir();
+    const agentsDir = path.join(tmp, "agents");
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, "cli-bot.md"),
+      `---\nname: cli-bot\ndescription: CLI test bot\nmode: subagent\n---\nCLI Prompt.`
+    );
+
+    const outDir = path.join(tmp, "cli-packed-output");
+    const program = createProgram();
+    await program.parseAsync(["node", "smcp", "pack", tmp, "-o", outDir, "--no-plugins", "--no-extensions"]);
+
+    expect(fs.existsSync(path.join(outDir, "smcp.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, "agents", "cli-bot.md"))).toBe(true);
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "smcp.json"), "utf8"));
+    expect(manifest.agents?.length).toBe(1);
+    expect(manifest.agents?.[0].name).toBe("cli-bot");
+  });
+
+  it("guards against path traversal in bundleAgentFiles and packDirectory", async () => {
+    const tmp = makeTmpDir();
+    const baseDir = path.join(tmp, "workspace");
+    fs.mkdirSync(baseDir, { recursive: true });
+
+    // Agent escaping baseDir
+    const result = bundleAgentFiles(
+      [
+        { name: "bad-agent", path: "../../outside.md" },
+        { name: "good-agent", path: "agents/good.md" }
+      ],
+      baseDir
+    );
+
+    // Only good-agent bundled
+    expect(result.bundledAgents.some((a) => a.name === "bad-agent")).toBe(false);
+    expect(result.bundledAgents.some((a) => a.name === "good-agent")).toBe(true);
+  });
+
+  it("exportPackLocally sanitizes agent names and writes agent files inside agentsDir", () => {
+    const tmp = makeTmpDir();
+    const exportOut = path.join(tmp, "exported");
+
+    exportPackLocally(
+      {
+        name: "test-export",
+        version: "1.0.0"
+      },
+      [],
+      exportOut,
+      [],
+      [
+        {
+          name: "../../escaped-agent",
+          mode: "subagent",
+          rawContent: "---\nname: escaped\n---\nPrompt"
+        },
+        {
+          name: "normal-agent",
+          mode: "subagent",
+          rawContent: "---\nname: normal\n---\nNormal prompt"
+        }
+      ]
+    );
+
+    // Verify sanitized write: basename only
+    const agentsDir = path.join(exportOut, "agents");
+    expect(fs.existsSync(path.join(agentsDir, "escaped-agent.md"))).toBe(true);
+    expect(fs.existsSync(path.join(agentsDir, "normal-agent.md"))).toBe(true);
+    // Verify file did not escape outDir
+    expect(fs.existsSync(path.join(tmp, "escaped-agent.md"))).toBe(false);
   });
 });

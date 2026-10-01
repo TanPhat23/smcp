@@ -352,15 +352,18 @@ export function installPackIntoAgents(
           }
 
           try {
-            installAgentFiles(primaryAgentsDir, agentObj, agentId);
-            installedAgentNames.push(agent.name);
+            const { writtenPath } = installAgentFiles(primaryAgentsDir, agentObj, agentId);
+            const installedName = path.basename(writtenPath, path.extname(writtenPath));
+            installedAgentNames.push(installedName);
+            if (!installedAgents.includes(installedName)) {
+              installedAgents.push(installedName);
+            }
           } catch {
             // Ignore installation error for unsupported harnesses
           }
         }
 
         if (installedAgentNames.length > 0) {
-          installedAgents.push(agentId);
           writtenPaths[agentId] = writtenPaths[agentId] || { scope: agentScope };
           writtenPaths[agentId].agentsDir = primaryAgentsDir;
           writtenPaths[agentId].agents = installedAgentNames;

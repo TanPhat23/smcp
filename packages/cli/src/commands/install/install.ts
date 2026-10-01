@@ -334,6 +334,13 @@ export async function installCommand(
     const firstWritten = targetAgentIds[0] ? result.writtenPaths[targetAgentIds[0]] : undefined;
     const effectiveScope: "global" | "project" = requestedScope || firstWritten?.scope || "global";
 
+    const allAgentNames = Array.from(
+      new Set([
+        ...(manifest.agents || []).map((a) => a.name),
+        ...result.installedAgents
+      ])
+    ).filter(Boolean);
+
     recordInstalledPack({
       name: manifest.name,
       source,
@@ -343,7 +350,7 @@ export async function installCommand(
       installedMcp: Object.keys(resolvedServers),
       installedSkills: (manifest.skills || []).map((s) => s.name),
       installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
-      installedAgents: (manifest.agents || []).map((a) => a.name),
+      installedAgents: allAgentNames,
       envKeys: Object.keys(options?.env || {}),
       installedAt: new Date().toISOString()
     });
@@ -397,7 +404,7 @@ export async function installCommand(
             installedMcp: Object.keys(resolvedServers),
             installedSkills: (manifest.skills || []).map((s) => s.name),
             installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
-            installedAgents: (manifest.agents || []).map((a) => a.name),
+            installedAgents: allAgentNames,
             writtenPaths: result.writtenPaths,
             warnings: warnings.length > 0 ? warnings : undefined
           },
