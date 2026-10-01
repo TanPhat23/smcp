@@ -4,6 +4,7 @@ import { McpServerConfigSchema, type McpServerConfig } from "./mcp.ts";
 import { SkillEntrySchema, type SkillEntry } from "./skill.ts";
 import { PluginEntrySchema, type PluginEntry } from "./plugin.ts";
 import { RequiredEnvSchema, type RequiredEnv } from "./env.ts";
+import { AgentEntrySchema, type AgentEntry } from "./agent.ts";
 
 export const ManifestSchema = z
   .object({
@@ -17,6 +18,7 @@ export const ManifestSchema = z
     mcpServers: z.record(z.string(), McpServerConfigSchema).optional().default({}),
     skills: z.array(SkillEntrySchema).optional().default([]),
     plugins: z.array(PluginEntrySchema).optional().default([]),
+    agents: z.array(AgentEntrySchema).optional().default([]),
     requiredEnv: z.array(RequiredEnvSchema).optional().default([])
   })
   .passthrough();
@@ -32,6 +34,7 @@ export interface Manifest {
   mcpServers?: Record<string, McpServerConfig>;
   skills?: SkillEntry[];
   plugins?: PluginEntry[];
+  agents?: AgentEntry[];
   requiredEnv?: RequiredEnv[];
   [key: string]: unknown;
 }

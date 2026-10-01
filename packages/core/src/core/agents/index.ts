@@ -8,5 +8,6 @@ export * from "./mcp.ts";
 export * from "./skills.ts";
 export * from "./plugins.ts";
 export * from "./filter.ts";
+export * from "./frontmatter.ts";
 
 export type { DetectedAgent };
