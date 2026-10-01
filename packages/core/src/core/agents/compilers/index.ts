@@ -14,12 +14,17 @@ export * from "./claude.ts";
  * @param agent The universal agent definition to compile.
  * @param harnessId The target agent harness identifier (e.g. 'opencode', 'claude-code', 'claude').
  * @returns The compiled agent file with filename and formatted content.
+ * @throws TypeError if the agent definition is not an object.
  * @throws Error if the specified harness is not supported.
  */
 export function compileAgentForHarness(
   agent: UniversalAgent,
   harnessId: string
 ): CompiledAgentFile {
+  if (!agent || typeof agent !== "object") {
+    throw new TypeError("Agent definition must be a valid object");
+  }
+
   if (!harnessId || typeof harnessId !== "string") {
     throw new Error("Harness identifier must be a non-empty string");
   }
@@ -31,7 +36,6 @@ export function compileAgentForHarness(
       return compileOpenCodeAgent(agent);
     case "claude":
     case "claude-code":
-    case "claude-desktop":
       return compileClaudeAgent(agent);
     default:
       throw new Error(

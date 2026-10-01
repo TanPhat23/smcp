@@ -1,5 +1,7 @@
+import path from "node:path";
 import YAML from "yaml";
 import type { UniversalAgent } from "../../../types/index.ts";
+import { isPrototypePollutionKey } from "../../../utils/security.ts";
 import type { CompiledAgentFile } from "./types.ts";
 
 /**
@@ -9,12 +11,21 @@ import type { CompiledAgentFile } from "./types.ts";
  * @returns CompiledAgentFile containing filename (e.g. `reviewer.md`) and content with $ARGUMENTS.
  */
 export function compileClaudeAgent(agent: UniversalAgent): CompiledAgentFile {
-  const cmd =
+  if (!agent || typeof agent !== "object") {
+    throw new TypeError("Agent definition must be a valid object");
+  }
+
+  const rawCmd =
     typeof agent.claude?.command === "string" && agent.claude.command.trim()
       ? agent.claude.command.trim()
       : agent.name;
-  const baseName = cmd.endsWith(".md") ? cmd.slice(0, -3) : cmd;
-  const filename = `${baseName}.md`;
+
+  // Sanitize path traversal characters across both POSIX and Windows separators
+  const normalizedCmd = rawCmd.replace(/\\/g, "/");
+  const baseCmd = path.basename(normalizedCmd).trim().replace(/^\.+/, "");
+  const safeName = baseCmd || agent.name;
+  const baseName = safeName.endsWith(".md") ? safeName.slice(0, -3) : safeName;
+  const filename = `${baseName || agent.name}.md`;
 
   const frontmatter: Record<string, unknown> = {
     description: agent.description
@@ -28,9 +39,10 @@ export function compileClaudeAgent(agent: UniversalAgent): CompiledAgentFile {
     }
   }
 
-  // Apply claude-specific overrides
+  // Apply claude-specific overrides safely
   if (agent.claude && typeof agent.claude === "object") {
     for (const [key, value] of Object.entries(agent.claude)) {
+      if (isPrototypePollutionKey(key)) continue;
       if (key === "command") continue;
       if (key === "argument_hint") {
         frontmatter["argument-hint"] = value;
