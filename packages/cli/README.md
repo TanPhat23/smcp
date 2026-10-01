@@ -38,7 +38,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.8
+# Output: 0.1.9
 ```
 
 ---
@@ -99,7 +99,37 @@ smcp install <source> -a opencode -f -y -e DB_PASSWORD=my_secret DB_URL=postgres
 smcp install <source> -a opencode -f -y -r npx
 ```
 
-### 4. Bundle & Share Skills, MCPs & Plugins
+### 4. Check for Updates & Outdated Packs
+```bash
+# Check if any installed packs have newer versions available:
+smcp outdated
+
+# Machine-readable output for AI agents & CI:
+smcp outdated --json
+```
+
+### 5. Update Installed Packs
+```bash
+# Update a specific installed pack:
+smcp update my-pack
+
+# Update all outdated packs automatically:
+smcp update --all
+
+# Non-interactive update with specific runtime:
+smcp update my-pack -y -r npx --json
+```
+
+### 6. Uninstall / Remove an Agent Pack
+```bash
+# Cleanly remove MCP servers, skills, and plugins belonging to a pack:
+smcp uninstall my-pack
+
+# Non-interactive uninstall for AI agents:
+smcp uninstall my-pack -y --json
+```
+
+### 7. Bundle & Share Skills, MCPs & Plugins
 ```bash
 # Interactive wizard (select servers, skills, auto-redact secrets, publish):
 smcp share
@@ -114,7 +144,7 @@ smcp share -P gist
 smcp share -P repo -R my-org/my-pack --branch main
 ```
 
-### 5. Manage Authentication
+### 8. Manage Authentication
 ```bash
 # Log in with GitHub PAT (requires 'gist' or 'repo' scope):
 smcp auth login
@@ -126,7 +156,7 @@ smcp auth status
 smcp auth logout
 ```
 
-### 6. Register Custom AI Agents
+### 9. Register Custom AI Agents
 ```bash
 # Interactive CLI prompt to register a new editor or CLI agent:
 smcp agent add

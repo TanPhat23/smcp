@@ -11,7 +11,10 @@ import {
   installCommand,
   instructionsCommand,
   listCommand,
-  shareCommand
+  outdatedCommand,
+  shareCommand,
+  uninstallCommand,
+  updateCommand
 } from "./commands/index.ts";
 import { isPrototypePollutionKey, loadUserExtensions } from "@tanphat/smcp-core";
 
@@ -46,7 +49,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.1.8")
+    .version("0.1.9")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions");
 
@@ -100,6 +103,37 @@ export function createProgram(options?: CreateProgramOptions): Command {
         ...options,
         env: parsedEnv
       });
+    });
+
+  program
+    .command("outdated")
+    .description("Check installed packs for available updates")
+    .option("--json", "Output updates in machine-readable JSON format for AI agents")
+    .action(async (options) => {
+      await outdatedCommand(options);
+    });
+
+  program
+    .command("update [pack]")
+    .alias("upgrade")
+    .description("Update installed agent packs to their newest versions")
+    .option("-a, --all", "Update all installed packs with available updates")
+    .option("-f, --force", "Force re-installation even if already at latest version")
+    .option("-r, --runtime <runtime>", "Target package runner / runtime for MCP server commands (e.g. npx, bunx)")
+    .option("-y, --yes", "Non-interactive mode, automatically accept defaults")
+    .option("--json", "Output results in machine-readable JSON format for AI agents")
+    .action(async (pack, options) => {
+      await updateCommand(pack, options);
+    });
+
+  program
+    .command("uninstall [pack]")
+    .alias("remove")
+    .description("Uninstall an agent pack and remove its MCP servers, skills, and plugins")
+    .option("-y, --yes", "Non-interactive mode, skip confirmation prompt")
+    .option("--json", "Output results in machine-readable JSON format for AI agents")
+    .action(async (pack, options) => {
+      await uninstallCommand(pack, options);
     });
 
   program

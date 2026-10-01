@@ -6,8 +6,10 @@ import {
   collectRequiredEnv,
   detectAgents,
   getAgentProfiles,
+  installSkillFiles,
   loadPackFromSource,
   readInstalledMcpServers,
+  recordInstalledPack,
   resolveActiveAgentPath,
   triggerHook,
   type InstallCommandOptions,
@@ -15,6 +17,7 @@ import {
 } from "@tanphat/smcp-core";
 import { installPackIntoAgents } from "./agents.ts";
 import { resolveMcpServerTemplates } from "./templates.ts";
+import { SMCP_AGENT_SKILL_CONTENT } from "../instructions.ts";
 
 export type { InstallCommandOptions } from "@tanphat/smcp-core";
 
@@ -273,6 +276,35 @@ export async function installCommand(
       options?.pluginDir,
       options?.runtime
     );
+
+    recordInstalledPack({
+      name: manifest.name,
+      source,
+      version: manifest.version || "1.0.0",
+      targetAgents: targetAgentIds,
+      runtime: options?.runtime,
+      installedMcp: Object.keys(resolvedServers),
+      installedSkills: (manifest.skills || []).map((s) => s.name),
+      installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
+      envKeys: Object.keys(options?.env || {}),
+      installedAt: new Date().toISOString()
+    });
+
+    for (const agentId of targetAgentIds) {
+      const profile = allProfiles[agentId];
+      if (profile?.skills?.paths && profile.skills.paths.length > 0) {
+        const skillsDir = resolveActiveAgentPath(profile.skills.paths);
+        if (skillsDir) {
+          try {
+            installSkillFiles(skillsDir, "smcp", {
+              "SKILL.md": SMCP_AGENT_SKILL_CONTENT
+            });
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    }
 
     try {
       await triggerHook("afterInstall", {

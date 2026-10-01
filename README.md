@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.1.8-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.1.9-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
@@ -61,7 +61,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.1.8
+# Output: 0.1.9
 ```
 
 ---
@@ -108,6 +108,22 @@ smcp install https://gist.github.com/user/7f8a9b123456
 - Select target agent(s) (OpenCode, Claude Code, Cursor, Windsurf, Claude Desktop).
 - Enter values for required environment variables (secret credentials are masked in the terminal).
 - Config files are safely updated with 2-space JSON formatting, and skill files are cleanly copied into place.
+
+### 5. Check Updates & Upgrade Packs
+```bash
+# Check if any installed packs have updates available:
+smcp outdated
+
+# Upgrade a specific pack or all packs:
+smcp update my-pack
+smcp update --all
+```
+
+### 6. Uninstall a Pack
+```bash
+# Remove an installed pack and its MCP servers, skills, and plugins cleanly:
+smcp uninstall my-pack
+```
 
 ---
 

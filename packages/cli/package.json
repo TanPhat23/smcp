@@ -1,6 +1,6 @@
 {
   "name": "@tanphat/smcp",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations",
   "type": "module",
   "main": "dist/index.js",
@@ -55,7 +55,7 @@
   "author": "TanPhat23",
   "license": "MIT",
   "dependencies": {
-    "@tanphat/smcp-core": "^0.1.8",
+    "@tanphat/smcp-core": "^0.1.9",
     "@clack/prompts": "^0.10.0",
     "commander": "^13.1.0",
     "picocolors": "^1.1.1",
