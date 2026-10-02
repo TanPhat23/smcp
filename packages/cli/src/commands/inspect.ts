@@ -20,6 +20,8 @@ export interface InspectCommandOptions {
   servers?: boolean;
   agents?: boolean;
   plugins?: boolean;
+  noCache?: boolean;
+  cache?: boolean;
 }
 
 export function formatInspectAgents(agents: AgentEntry[] = []): string {
@@ -105,7 +107,8 @@ export async function inspectCommand(
 
   let loaded;
   try {
-    loaded = await loadPackFromSource(source);
+    const noCache = options?.noCache ?? (options?.cache === false ? true : undefined);
+    loaded = await loadPackFromSource(source, { noCache });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     if (options?.json) {

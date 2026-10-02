@@ -50,7 +50,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.3.3")
+    .version("0.3.4")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions");
 
@@ -176,6 +176,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("--servers", "Show only MCP servers section")
     .option("--agents", "Show only agents section")
     .option("--plugins", "Show only plugins section")
+    .option("--no-cache", "Bypass local cache and force fresh network fetch from remote source")
     .option("--json", "Output pack inspection in machine-readable JSON format for AI agents")
     .action(async (source, options) => {
       await inspectCommand(source, options);

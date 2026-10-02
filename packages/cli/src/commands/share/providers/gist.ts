@@ -1,6 +1,12 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { getAuthConfig, GitHubClient, hashObject, recordShare } from "@tanphat/smcp-core";
+import {
+  getAuthConfig,
+  GitHubClient,
+  hashObject,
+  recordShare,
+  writeGistCache
+} from "@tanphat/smcp-core";
 import { authLoginCommand } from "../../auth/login.ts";
 import type { ShareProvider, ShareProviderContext } from "./types.ts";
 
@@ -89,6 +95,23 @@ export class GistShareProvider implements ShareProvider {
         });
         resultUrl = res.html_url;
         finalGistId = res.id;
+      }
+
+      if (finalGistId) {
+        const cachedFiles: Record<string, { filename: string; content: string; truncated: boolean }> = {};
+        for (const [filename, fileObj] of Object.entries(gistFiles)) {
+          cachedFiles[filename] = {
+            filename,
+            content: fileObj.content,
+            truncated: false
+          };
+        }
+        writeGistCache(finalGistId, {
+          id: finalGistId,
+          html_url: resultUrl,
+          description: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
+          files: cachedFiles
+        });
       }
 
       const serverFingerprints: Record<string, string> = {};

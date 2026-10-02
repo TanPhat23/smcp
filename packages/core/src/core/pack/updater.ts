@@ -44,7 +44,7 @@ export function compareSemver(v1: string, v2: string): number {
 
 export async function checkPackUpdateStatus(
   record: InstalledPackRecord,
-  options?: { token?: string }
+  options?: { token?: string; noCache?: boolean }
 ): Promise<PackUpdateCheckResult> {
   const result: PackUpdateCheckResult = {
     name: record.name,
@@ -54,7 +54,7 @@ export async function checkPackUpdateStatus(
   };
 
   try {
-    const loaded = await loadPackFromSource(record.source, options);
+    const loaded = await loadPackFromSource(record.source, { ...options, noCache: true });
     const remoteVersion = loaded.manifest.version || "0.0.0";
     result.latestVersion = remoteVersion;
 
