@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.3.4-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.4.0-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
@@ -61,7 +61,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.3.4
+# Output: 0.4.0
 ```
 
 ---
