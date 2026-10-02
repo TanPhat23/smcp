@@ -64,7 +64,10 @@ export class GistPackLoader implements PackLoader {
 
   async load(context: PackLoaderContext): Promise<LoadedPack> {
     const trimmed = context.source.trim();
-    const gist = await GitHubClient.fetchGist(trimmed, context.token);
+    const gist = await GitHubClient.fetchGist(trimmed, context.token, {
+      noCache: context.noCache,
+      fetchAllTruncated: context.fetchAllTruncated
+    });
     if (!gist.files || !gist.files["smcp.json"]) {
       throw new Error("Gist does not contain an smcp.json manifest file.");
     }

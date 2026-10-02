@@ -8,3 +8,4 @@ export * from "./github.ts";
 export * from "./http.ts";
 export * from "./extensions/index.ts";
 export * from "./lifecycle/index.ts";
+export * from "./cache/index.ts";

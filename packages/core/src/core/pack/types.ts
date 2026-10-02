@@ -9,6 +9,8 @@ export interface LoadedPack {
 export interface PackLoaderContext {
   source: string;
   token?: string;
+  noCache?: boolean;
+  fetchAllTruncated?: boolean;
 }
 
 export interface PackLoader {

@@ -6,7 +6,7 @@ export type { LoadedPack, PackLoader, PackLoaderContext } from "./types.ts";
 
 export async function loadPackFromSource(
   source: string,
-  options?: { token?: string }
+  options?: { token?: string; noCache?: boolean; fetchAllTruncated?: boolean }
 ): Promise<LoadedPack> {
   if (!source || !source.trim()) {
     throw new Error("Source path or URL is required.");
@@ -16,7 +16,9 @@ export async function loadPackFromSource(
   const token = options?.token ?? getAuthConfig().githubToken;
   const context: PackLoaderContext = {
     source: trimmedSource,
-    token
+    token,
+    noCache: options?.noCache,
+    fetchAllTruncated: options?.fetchAllTruncated
   };
 
   const loaders = getAllPackLoaders();

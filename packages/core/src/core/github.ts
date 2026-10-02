@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import axios, {
   type AxiosAdapter,
   type AxiosInstance,
@@ -13,12 +14,40 @@ import {
   clearHttpClientCache,
   getOrCreateAxiosInstance
 } from "./http.ts";
+import {
+  clearGistCache,
+  clearGistDiskCache,
+  getGistCacheDir,
+  readGistCache,
+  writeGistCache,
+  touchGistCache,
+  DEFAULT_GIST_CACHE_TTL_MS,
+  type CacheEntry,
+  type CacheOptions,
+  type GistCacheEntry
+} from "./cache/index.ts";
 
-export { HttpClient, createHttpClient, clearHttpClientCache, getOrCreateAxiosInstance };
+export {
+  HttpClient,
+  createHttpClient,
+  clearHttpClientCache,
+  getOrCreateAxiosInstance,
+  clearGistCache,
+  clearGistDiskCache,
+  getGistCacheDir,
+  readGistCache,
+  writeGistCache,
+  touchGistCache,
+  DEFAULT_GIST_CACHE_TTL_MS,
+  type CacheEntry,
+  type CacheOptions,
+  type GistCacheEntry
+};
 export const DEFAULT_TIMEOUT_MS = 60000;
 
 export function clearGitHubClientCache(): void {
   clearHttpClientCache();
+  clearGistCache();
 }
 
 export function setDefaultAxiosAdapter(adapter: AxiosAdapter | undefined): void {
@@ -61,6 +90,9 @@ interface GitHubClientOptions {
   axiosInstance?: AxiosInstance;
   adapter?: AxiosAdapter;
   baseURL?: string;
+  noCache?: boolean;
+  fetchAllTruncated?: boolean;
+  cacheTtlMs?: number;
 }
 
 export function createGitHubAxios(
@@ -366,6 +398,74 @@ export interface RepoPackResult {
   repoFullName: string;
   ref: string;
   htmlUrl: string;
+}
+
+function extractEtag(headers: unknown): string | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const h = headers as Record<string, unknown>;
+  const etagVal =
+    (typeof (h as any).get === "function" ? (h as any).get("etag") : undefined) ??
+    h["etag"] ??
+    h["ETag"] ??
+    h["Etag"];
+  return typeof etagVal === "string" ? etagVal : undefined;
+}
+
+async function fetchRawFileContent(client: AxiosInstance, rawUrl: string): Promise<string | null> {
+  try {
+    const rawRes = await client.get<string>(rawUrl, {
+      headers: {
+        Accept: "text/plain, */*",
+        Authorization: undefined
+      },
+      responseType: "text",
+      transformResponse: [(data) => (typeof data === "string" ? data : String(data))]
+    });
+    if (typeof rawRes.data === "string" && rawRes.data.length > 0) {
+      return rawRes.data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTruncatedFiles(
+  client: AxiosInstance,
+  gist: GistResponse,
+  fetchAllTruncated?: boolean
+): Promise<void> {
+  if (!gist || !gist.files) return;
+
+  const smcpFile = gist.files["smcp.json"];
+  if (smcpFile && (smcpFile.truncated || !smcpFile.content) && smcpFile.raw_url) {
+    const content = await fetchRawFileContent(client, smcpFile.raw_url);
+    if (content !== null) {
+      smcpFile.content = content;
+      smcpFile.truncated = false;
+    }
+  }
+
+  if (fetchAllTruncated) {
+    const otherTruncatedFiles = Object.entries(gist.files)
+      .filter(
+        ([filename, file]) =>
+          filename !== "smcp.json" && (file.truncated || !file.content) && Boolean(file.raw_url)
+      )
+      .map(([, file]) => file);
+
+    if (otherTruncatedFiles.length > 0) {
+      await Promise.all(
+        otherTruncatedFiles.map(async (file) => {
+          const content = await fetchRawFileContent(client, file.raw_url!);
+          if (content !== null) {
+            file.content = content;
+            file.truncated = false;
+          }
+        })
+      );
+    }
+  }
 }
 
 export class GitHubClient {
@@ -775,38 +875,64 @@ export class GitHubClient {
     const clientOptions: GitHubClientOptions =
       typeof options === "number" ? { timeoutMs: options } : options || {};
     const client = clientOptions.axiosInstance || createGitHubAxios(token, clientOptions);
-    try {
-      const res = await client.get<GistResponse>(`/gists/${encodeURIComponent(id)}`);
-      const gist = res.data;
 
-      // Handle truncated files (GitHub Gist API truncates file content over ~64KB)
-      if (gist && gist.files) {
-        const truncatedFiles = Object.values(gist.files).filter(
-          (file) => (file.truncated || !file.content) && Boolean(file.raw_url)
-        );
-        if (truncatedFiles.length > 0) {
-          await Promise.all(
-            truncatedFiles.map(async (file) => {
-              try {
-                const rawRes = await client.get<string>(file.raw_url!, {
-                  headers: {
-                    Accept: "text/plain, */*",
-                    Authorization: undefined
-                  },
-                  responseType: "text",
-                  transformResponse: [(data) => (typeof data === "string" ? data : String(data))]
-                });
-                if (typeof rawRes.data === "string" && rawRes.data.length > 0) {
-                  file.content = rawRes.data;
-                  file.truncated = false;
-                }
-              } catch {
-                // If fetching full raw content fails, fall back to existing file.content
-              }
-            })
-          );
+    const ttl = clientOptions.cacheTtlMs ?? DEFAULT_GIST_CACHE_TTL_MS;
+
+    let cached: CacheEntry<GistResponse> | null = null;
+    if (clientOptions.noCache !== true) {
+      cached = readGistCache(id);
+      if (cached) {
+        const isFresh =
+          clientOptions.cacheTtlMs !== undefined
+            ? Date.now() - cached.cachedAt < clientOptions.cacheTtlMs
+            : Date.now() - cached.cachedAt < DEFAULT_GIST_CACHE_TTL_MS;
+
+        if (isFresh) {
+          if (clientOptions.fetchAllTruncated) {
+            await resolveTruncatedFiles(client, cached.data, true);
+            writeGistCache(id, cached.data, cached.etag);
+          }
+          return cached.data;
         }
       }
+    }
+
+    try {
+      const reqHeaders: Record<string, string> = {};
+      const isConditional = Boolean(clientOptions.noCache !== true && cached?.etag);
+      if (isConditional) {
+        reqHeaders["If-None-Match"] = cached!.etag!;
+      }
+
+      const res = await client.get<GistResponse>(`/gists/${encodeURIComponent(id)}`, {
+        headers: isConditional ? reqHeaders : undefined,
+        validateStatus: isConditional
+          ? (s) => (s >= 200 && s < 300) || s === 304
+          : undefined
+      });
+
+      if (res.status === 304 && cached) {
+        const newEtag = extractEtag(res.headers);
+        if (clientOptions.fetchAllTruncated) {
+          await resolveTruncatedFiles(client, cached.data, true);
+        }
+        if (newEtag) {
+          writeGistCache(id, cached.data, newEtag);
+        } else if (clientOptions.fetchAllTruncated) {
+          writeGistCache(id, cached.data, cached.etag);
+        } else {
+          touchGistCache(id);
+        }
+        return cached.data;
+      }
+
+      const gist = res.data;
+
+      // Handle truncated files
+      await resolveTruncatedFiles(client, gist, clientOptions.fetchAllTruncated);
+
+      const etag = extractEtag(res.headers);
+      writeGistCache(id, gist, etag);
 
       return gist;
     } catch (err: unknown) {
