@@ -12,8 +12,8 @@ function validateGitProvider(provider: unknown): asserts provider is GitProvider
 
   if (
     typeof candidate.id !== "string" ||
-    !candidate.id.trim() ||
-    !/^[a-zA-Z0-9_-]+$/.test(candidate.id.trim()) ||
+    !candidate.id ||
+    !/^[a-zA-Z0-9_-]+$/.test(candidate.id) ||
     candidate.id.length > 64
   ) {
     throw new Error(
@@ -21,7 +21,7 @@ function validateGitProvider(provider: unknown): asserts provider is GitProvider
     );
   }
 
-  if (isPrototypePollutionKey(candidate.id)) {
+  if (isPrototypePollutionKey(candidate.id.trim().toLowerCase())) {
     throw new Error(`Invalid provider id: prototype pollution key '${candidate.id}' is rejected`);
   }
 
@@ -55,7 +55,11 @@ function validateGitProvider(provider: unknown): asserts provider is GitProvider
  */
 export function registerGitProvider(provider: GitProvider, prepend = true): void {
   validateGitProvider(provider);
-  const safeProvider = Object.isFrozen(provider) ? provider : Object.freeze({ ...provider });
+  const safeProvider: GitProvider = Object.isFrozen(provider)
+    ? provider
+    : Object.freeze(
+        Object.assign(Object.create(Object.getPrototypeOf(provider)), provider)
+      );
   activeProviders = activeProviders.filter(
     (p) => p.id.toLowerCase() !== safeProvider.id.toLowerCase()
   );
