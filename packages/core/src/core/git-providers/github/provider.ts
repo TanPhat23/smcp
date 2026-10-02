@@ -76,13 +76,13 @@ export class GitHubGitProvider implements GitProvider {
   }
 
   async fetchRepoPack(ref: GitRepoRef, options?: GitFetchOptions): Promise<RepoPackResult> {
-    return fetchRepoPack(ref, options?.token, options);
+    return GitHubClient.fetchRepoPack(ref, options?.token, options);
   }
 
   async fetchSnippetPack(ref: GitSnippetRef, options?: GitFetchOptions): Promise<SnippetPackResult> {
-    const gist = await fetchGist(ref.snippetId, options?.token, options);
+    const gist = await GitHubClient.fetchGist(ref.snippetId, options?.token, options);
     if (!gist.files || !gist.files["smcp.json"]) {
-      throw new Error(`Gist ${ref.snippetId} does not contain an smcp.json manifest file.`);
+      throw new Error("Gist does not contain an smcp.json manifest file.");
     }
     const manifest = ManifestSchema.parse(JSON.parse(gist.files["smcp.json"].content));
     const rawFiles: Record<string, string> = {};

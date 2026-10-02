@@ -25,6 +25,7 @@ import type {
   GistResponse,
   GitHubClientOptions,
   GitHubRepoRef,
+  GitRepoRef,
   GitHubUserResponse,
   RepoPackResult
 } from "./types.ts";
@@ -131,7 +132,7 @@ export class GitHubClient {
   }
 
   static async fetchRepoPack(
-    source: string,
+    source: string | GitRepoRef,
     token?: string,
     options?: GitHubClientOptions | number
   ): Promise<RepoPackResult> {

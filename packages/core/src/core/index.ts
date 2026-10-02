@@ -5,6 +5,7 @@ export * from "./state/index.ts";
 export * from "./pack/index.ts";
 export * from "./auth/index.ts";
 export * from "./github.ts";
+export * from "./git-providers/index.ts";
 export * from "./http.ts";
 export * from "./extensions/index.ts";
 export * from "./lifecycle/index.ts";

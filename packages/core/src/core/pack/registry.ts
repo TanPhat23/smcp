@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ManifestSchema } from "../../types/index.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
+import { resolveGitProviderForSource } from "../git-providers/index.ts";
 import { GitHubClient } from "../github.ts";
 import type { LoadedPack, PackLoader, PackLoaderContext } from "./types.ts";
 
@@ -36,15 +37,30 @@ export class LocalPackLoader implements PackLoader {
   }
 }
 
-export class GitHubRepoPackLoader implements PackLoader {
-  readonly name = "github-repo";
+export class GitRepoPackLoader implements PackLoader {
+  readonly name: string = "git-repo";
 
   matches(context: PackLoaderContext): boolean {
-    return GitHubClient.isRepoSource(context.source.trim());
+    const trimmed = context.source.trim();
+    const provider = resolveGitProviderForSource(trimmed);
+    if (!provider) return false;
+    return provider.matchesRepo(trimmed) && provider.parseRepo(trimmed) !== null;
   }
 
   async load(context: PackLoaderContext): Promise<LoadedPack> {
-    const repoPack = await GitHubClient.fetchRepoPack(context.source.trim(), context.token);
+    const trimmed = context.source.trim();
+    const provider = resolveGitProviderForSource(trimmed);
+    if (!provider) {
+      throw new Error(`No git provider found for source: ${trimmed}`);
+    }
+    const parsedRepo = provider.parseRepo(trimmed);
+    if (!parsedRepo) {
+      throw new Error(`Failed to parse repository source with provider '${provider.id}': ${trimmed}`);
+    }
+    const repoPack = await provider.fetchRepoPack(parsedRepo, {
+      token: context.token,
+      noCache: context.noCache
+    });
     return {
       manifest: repoPack.manifest,
       rawFiles: repoPack.rawFiles
@@ -52,11 +68,19 @@ export class GitHubRepoPackLoader implements PackLoader {
   }
 }
 
-export class GistPackLoader implements PackLoader {
-  readonly name = "github-gist";
+export class GitHubRepoPackLoader extends GitRepoPackLoader {
+  override readonly name = "github-repo";
+}
+
+export class SnippetPackLoader implements PackLoader {
+  readonly name: string = "git-snippet";
 
   matches(context: PackLoaderContext): boolean {
     const trimmed = context.source.trim();
+    const provider = resolveGitProviderForSource(trimmed);
+    if (provider && typeof provider.matchesSnippet === "function" && provider.matchesSnippet(trimmed)) {
+      return true;
+    }
     const isUrl = trimmed.startsWith("http://") || trimmed.startsWith("https://");
     const isGistHexId = !isUrl && /^[a-fA-F0-9]{20,40}$/.test(trimmed);
     return isUrl || isGistHexId;
@@ -64,6 +88,22 @@ export class GistPackLoader implements PackLoader {
 
   async load(context: PackLoaderContext): Promise<LoadedPack> {
     const trimmed = context.source.trim();
+    const provider = resolveGitProviderForSource(trimmed);
+    if (provider && provider.id !== "github" && typeof provider.fetchSnippetPack === "function") {
+      const parsedSnippet = provider.parseSnippet ? provider.parseSnippet(trimmed) : null;
+      if (parsedSnippet) {
+        const snippetPack = await provider.fetchSnippetPack(parsedSnippet, {
+          token: context.token,
+          noCache: context.noCache,
+          fetchAllTruncated: context.fetchAllTruncated
+        });
+        return {
+          manifest: snippetPack.manifest,
+          rawFiles: snippetPack.rawFiles
+        };
+      }
+    }
+
     const gist = await GitHubClient.fetchGist(trimmed, context.token, {
       noCache: context.noCache,
       fetchAllTruncated: context.fetchAllTruncated
@@ -80,11 +120,15 @@ export class GistPackLoader implements PackLoader {
   }
 }
 
+export class GistPackLoader extends SnippetPackLoader {
+  override readonly name = "github-gist";
+}
+
 function createDefaultLoaders(): PackLoader[] {
   return [
     Object.freeze(new LocalPackLoader()),
-    Object.freeze(new GitHubRepoPackLoader()),
-    Object.freeze(new GistPackLoader())
+    Object.freeze(new GitRepoPackLoader()),
+    Object.freeze(new SnippetPackLoader())
   ];
 }
 
@@ -143,8 +187,14 @@ export function unregisterPackLoader(name: string): boolean {
   if (!name || typeof name !== "string" || isPrototypePollutionKey(name)) {
     return false;
   }
+  const cleanName = name.trim();
   const prevLength = activeLoaders.length;
-  activeLoaders = activeLoaders.filter((l) => l.name !== name.trim());
+  activeLoaders = activeLoaders.filter(
+    (l) =>
+      l.name !== cleanName &&
+      !(cleanName === "github-repo" && l.name === "git-repo") &&
+      !(cleanName === "github-gist" && l.name === "git-snippet")
+  );
   return activeLoaders.length < prevLength;
 }
 
@@ -162,7 +212,16 @@ export function getPackLoader(name: string): PackLoader | undefined {
   if (!name || typeof name !== "string" || isPrototypePollutionKey(name)) {
     return undefined;
   }
-  return activeLoaders.find((l) => l.name === name.trim());
+  const cleanName = name.trim();
+  const found = activeLoaders.find((l) => l.name === cleanName);
+  if (found) return found;
+  if (cleanName === "github-repo") {
+    return activeLoaders.find((l) => l.name === "git-repo");
+  }
+  if (cleanName === "github-gist") {
+    return activeLoaders.find((l) => l.name === "git-snippet");
+  }
+  return undefined;
 }
 
 /**
