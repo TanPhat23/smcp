@@ -50,7 +50,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.5.1")
+    .version("0.5.2")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions")
     .option(

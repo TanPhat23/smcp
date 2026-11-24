@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   collectDirectoryFilesAsync,
+  generatePackReadme,
   installPluginFiles,
   isIgnoredPath,
   readGistCache,
@@ -11,6 +12,8 @@ import {
 } from "../packages/core/src/index.ts";
 import { selectRelevantRepoBlobs } from "../packages/core/src/core/git-providers/repo-utils.ts";
 import { extractPluginFiles, extractSkillFiles } from "../packages/cli/src/commands/install/extract.ts";
+import { discoverPackComponents } from "../packages/cli/src/commands/pack/discovery.ts";
+import { packDirectory } from "../packages/cli/src/commands/pack/pack.ts";
 import { bundleSkillFiles } from "../packages/cli/src/commands/share/bundle.ts";
 
 describe("Codebase audit & security/performance fixes", () => {
@@ -108,5 +111,26 @@ describe("Codebase audit & security/performance fixes", () => {
 
     const pluginFiles = extractPluginFiles("pstack", rawFiles);
     expect(pluginFiles["skills/tdd/SKILL.md"]).toBe("tdd skill");
+  });
+
+  it("discovers and emits standalone mcp/mcp.json and documents it in README.md", async () => {
+    const packRoot = path.join(tempDir, "my-pack");
+    const outRoot = path.join(tempDir, "packed");
+    fs.mkdirSync(path.join(packRoot, "mcp"), { recursive: true });
+    fs.writeFileSync(
+      path.join(packRoot, "mcp", "mcp.json"),
+      JSON.stringify({ mcpServers: { grep: { url: "https://mcp.grep.app" } } }, null, 2)
+    );
+
+    const components = discoverPackComponents(packRoot);
+    expect(components.mcpServers?.grep?.url).toBe("https://mcp.grep.app");
+
+    const packed = await packDirectory(packRoot, { outputDir: outRoot });
+    expect(packed.manifest.mcpServers?.grep?.url).toBe("https://mcp.grep.app");
+    expect(fs.existsSync(path.join(outRoot, "mcp", "mcp.json"))).toBe(true);
+
+    const readme = generatePackReadme(packed.manifest, "TanPhat23/gemini");
+    expect(readme).toContain("[`mcp/mcp.json`](mcp/mcp.json)");
+    expect(readme).toContain("- **grep**: `https://mcp.grep.app`");
   });
 });

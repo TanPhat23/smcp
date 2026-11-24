@@ -494,6 +494,11 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   const { bundledPlugins, gistFiles: pluginGistFiles } = await bundlePluginFiles(selectedPlugins);
   const { bundledAgents, gistFiles: agentGistFiles } = bundleAgentFilesForShare(selectedAgents);
   const gistFiles: Record<string, { content: string }> = { ...skillGistFiles, ...pluginGistFiles, ...agentGistFiles };
+  if (Object.keys(redactedServers).length > 0) {
+    gistFiles["mcp.json"] = {
+      content: JSON.stringify({ mcpServers: redactedServers }, null, 2) + "\n"
+    };
+  }
 
   const manifest: Manifest = {
     $schema: "https://smcp.dev/schema.json",

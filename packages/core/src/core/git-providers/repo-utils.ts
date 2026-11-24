@@ -55,6 +55,10 @@ export function selectRelevantRepoBlobs<T extends RepoBlobDescriptor>(
       return true;
     }
 
+    if (rel === "mcp/mcp.json" || rel === "mcp.json") {
+      return !manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0;
+    }
+
     return rel.startsWith("agents/") || rel.endsWith(".md") || rel.endsWith(".json");
   });
 }

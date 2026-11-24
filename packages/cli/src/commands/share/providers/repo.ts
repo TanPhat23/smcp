@@ -189,6 +189,10 @@ export class RepoShareProvider implements ShareProvider {
         "README.md": generatePackReadme(manifest, repoFullName)
       };
 
+      if (manifest.mcpServers && Object.keys(manifest.mcpServers).length > 0) {
+        repoFiles["mcp/mcp.json"] = JSON.stringify({ mcpServers: manifest.mcpServers }, null, 2) + "\n";
+      }
+
       for (const sk of bundledSkills) {
         if (sk.files) {
           for (const [fn, cnt] of Object.entries(sk.files)) {

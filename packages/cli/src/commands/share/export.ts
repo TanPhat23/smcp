@@ -22,6 +22,13 @@ export function exportPackLocally(
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, "smcp.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
 
+  if (manifest.mcpServers && Object.keys(manifest.mcpServers).length > 0) {
+    atomicWriteFileSync(
+      path.join(outDir, "mcp", "mcp.json"),
+      JSON.stringify({ mcpServers: manifest.mcpServers }, null, 2) + "\n"
+    );
+  }
+
   for (const sk of bundledSkills) {
     if (sk.files) {
       installSkillFiles(path.join(outDir, "skills"), sk.name, sk.files);

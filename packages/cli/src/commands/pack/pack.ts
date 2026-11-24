@@ -145,6 +145,15 @@ export async function packDirectory(
   const rawFiles: Record<string, string> = {};
   const gistFiles: Record<string, { content: string }> = {};
 
+  // 0. Include discovered mcpServers when manifest lacks them
+  if (
+    components.mcpServers &&
+    Object.keys(components.mcpServers).length > 0 &&
+    (!manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0)
+  ) {
+    manifest.mcpServers = components.mcpServers;
+  }
+
   // 1. Bundle Agents
   if (components.agents && components.agents.length > 0) {
     const { bundledAgents, rawFiles: agentRawFiles, gistFiles: agentGistFiles } = bundleAgentFiles(
@@ -182,6 +191,12 @@ export async function packDirectory(
         }
       }
     }
+  }
+
+  if (manifest.mcpServers && Object.keys(manifest.mcpServers).length > 0) {
+    const mcpJsonContent = JSON.stringify({ mcpServers: manifest.mcpServers }, null, 2) + "\n";
+    rawFiles["mcp/mcp.json"] = mcpJsonContent;
+    gistFiles["mcp_mcp.json"] = { content: mcpJsonContent };
   }
 
   // Manifest file

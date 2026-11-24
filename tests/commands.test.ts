@@ -484,6 +484,9 @@ describe("Commands Implementation", () => {
       exportPackLocally(manifest, bundledSkills, outDir);
 
       expect(fs.existsSync(path.join(outDir, "smcp.json"))).toBe(true);
+      expect(fs.existsSync(path.join(outDir, "mcp", "mcp.json"))).toBe(true);
+      const savedMcp = JSON.parse(fs.readFileSync(path.join(outDir, "mcp", "mcp.json"), "utf8"));
+      expect(savedMcp.mcpServers.sqlite).toBeDefined();
       expect(fs.existsSync(path.join(outDir, "skills", "my-skill", "SKILL.md"))).toBe(true);
       expect(fs.existsSync(path.join(outDir, "skills", "my-skill", "scripts", "run.sh"))).toBe(true);
 
@@ -839,6 +842,9 @@ describe("Commands Implementation", () => {
         expect(committedPayload.repo).toBe("my-new-repo");
         expect(committedPayload.branch).toBe("main");
         expect(committedPayload.files["smcp.json"]).toBeDefined();
+        expect(committedPayload.files["mcp/mcp.json"]).toBeDefined();
+        const committedMcp = JSON.parse(committedPayload.files["mcp/mcp.json"]);
+        expect(committedMcp.mcpServers.testServer).toBeDefined();
         expect(committedPayload.files["README.md"]).toBeDefined();
         expect(committedPayload.files["README.md"]).toContain("# repo-pack");
 

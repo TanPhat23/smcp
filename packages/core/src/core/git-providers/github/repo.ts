@@ -97,11 +97,15 @@ export function generatePackReadme(manifest: Manifest, repoFullName?: string): s
     ""
   ];
 
-  const servers = Object.keys(manifest.mcpServers || {});
+  const servers = Object.entries(manifest.mcpServers || {});
   if (servers.length > 0) {
-    lines.push("## MCP Servers", "");
-    for (const s of servers) {
-      lines.push(`- **${s}**`);
+    lines.push("## MCP Servers", "", "Standalone config: [`mcp/mcp.json`](mcp/mcp.json)", "");
+    for (const [s, cfg] of servers) {
+      const cmdStr = Array.isArray(cfg.command)
+        ? cfg.command.join(" ")
+        : [cfg.command, ...(cfg.args || [])].filter(Boolean).join(" ");
+      const target = cmdStr || cfg.url || "";
+      lines.push(target ? `- **${s}**: \`${target}\`` : `- **${s}**`);
     }
     lines.push("");
   }

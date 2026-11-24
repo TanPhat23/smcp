@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  McpServerConfigSchema,
   parseAgentMarkdown,
   scanSkills,
   type AgentEntry,
   type Manifest,
+  type McpServerConfig,
   type PluginEntry,
   type SkillEntry,
   type UniversalAgent,
@@ -18,6 +20,7 @@ export interface DiscoveredAgent extends UniversalAgent {
 
 export interface DiscoveredPackComponents {
   manifest?: Manifest;
+  mcpServers?: Record<string, McpServerConfig>;
   skills?: SkillEntry[];
   plugins?: PluginEntry[];
   agents?: DiscoveredAgent[];
@@ -49,6 +52,39 @@ export function discoverPackComponents(baseDir: string): DiscoveredPackComponent
       result.manifest = JSON.parse(content);
     } catch {
       // Unparseable manifest will be ignored during discovery
+    }
+  }
+
+  // 1.5 Discover mcp/mcp.json or mcp.json if present
+  for (const mcpRel of [path.join("mcp", "mcp.json"), "mcp.json"]) {
+    const mcpPath = path.join(root, mcpRel);
+    if (!fs.existsSync(mcpPath)) continue;
+    try {
+      const stat = fs.statSync(mcpPath);
+      if (!stat.isFile()) continue;
+      const parsed: unknown = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const rec = parsed as Record<string, unknown>;
+        const rawMap =
+          rec.mcpServers && typeof rec.mcpServers === "object" && !Array.isArray(rec.mcpServers)
+            ? (rec.mcpServers as Record<string, unknown>)
+            : undefined;
+        if (rawMap) {
+          const validServers: Record<string, McpServerConfig> = {};
+          for (const [k, v] of Object.entries(rawMap)) {
+            const parsedServer = McpServerConfigSchema.safeParse(v);
+            if (parsedServer.success) {
+              validServers[k] = parsedServer.data;
+            }
+          }
+          if (Object.keys(validServers).length > 0) {
+            result.mcpServers = validServers;
+            break;
+          }
+        }
+      }
+    } catch {
+      // Unparseable mcp.json will be ignored during discovery
     }
   }
 
