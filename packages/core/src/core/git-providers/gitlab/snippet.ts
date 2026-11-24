@@ -9,8 +9,9 @@ import type {
   GitLabSnippetResponse,
   GitLabClientOptions
 } from "./types.ts";
+import { isGitLabHost } from "./repo.ts";
 
-export function parseGitLabSnippet(input: string): GitSnippetRef | null {
+export function parseGitLabSnippet(input: string, customHosts?: string[]): GitSnippetRef | null {
   if (!input || typeof input !== "string" || input.trim().length === 0) {
     return null;
   }
@@ -43,12 +44,7 @@ export function parseGitLabSnippet(input: string): GitSnippetRef | null {
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
       const u = new URL(trimmed);
-      const isGitLabHost =
-        u.hostname === "gitlab.com" ||
-        u.hostname === "www.gitlab.com" ||
-        u.hostname.includes("gitlab");
-
-      if (!isGitLabHost) {
+      if (!isGitLabHost(u.hostname, customHosts)) {
         return null;
       }
 

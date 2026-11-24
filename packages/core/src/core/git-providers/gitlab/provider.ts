@@ -19,23 +19,28 @@ export class GitLabGitProvider implements GitProvider {
   readonly id = "gitlab";
   readonly name = "GitLab";
   readonly defaultHost = "gitlab.com";
+  readonly customHosts: string[];
+
+  constructor(options?: { customHosts?: string[] }) {
+    this.customHosts = options?.customHosts || [];
+  }
 
   matchesRepo(source: string): boolean {
     if (!source || typeof source !== "string") return false;
-    return parseGitLabRepo(source) !== null;
+    return parseGitLabRepo(source, this.customHosts) !== null;
   }
 
   parseRepo(source: string): GitRepoRef | null {
-    return parseGitLabRepo(source);
+    return parseGitLabRepo(source, this.customHosts);
   }
 
   matchesSnippet(source: string): boolean {
     if (!source || typeof source !== "string") return false;
-    return parseGitLabSnippet(source) !== null;
+    return parseGitLabSnippet(source, this.customHosts) !== null;
   }
 
   parseSnippet(source: string): GitSnippetRef | null {
-    return parseGitLabSnippet(source);
+    return parseGitLabSnippet(source, this.customHosts);
   }
 
   async fetchRepoPack(ref: GitRepoRef, options?: GitFetchOptions): Promise<RepoPackResult> {

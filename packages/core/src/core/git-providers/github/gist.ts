@@ -202,6 +202,32 @@ export async function fetchGist(
   }
 }
 
+/**
+ * A 2xx response that is not a Gist object (e.g. an HTML login page from a proxy or
+ * captive portal) must not be treated as success.
+ */
+function validateGistResponse(
+  res: { data: unknown; status?: number; headers?: unknown },
+  context: string,
+  fallbackId?: string
+): { id: string; html_url: string; [key: string]: unknown } {
+  const data = res.data;
+  const ctype = (res.headers as any)?.["content-type"] ?? (res.headers as any)?.get?.("content-type");
+  const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+  const id = typeof obj?.id === "string" && obj.id ? obj.id : fallbackId;
+  if (!obj || !id) {
+    const snippet = (typeof data === "string" ? data : JSON.stringify(data) ?? String(data))
+      .replace(/\s+/g, " ")
+      .slice(0, 120);
+    throw new Error(
+      `${context}: unexpected response from GitHub (HTTP ${res.status ?? "?"}, content-type ${ctype ?? "unknown"}, ${typeof data}). A proxy or captive portal may be intercepting requests. Body: ${snippet}`
+    );
+  }
+  const htmlUrl =
+    typeof obj.html_url === "string" && obj.html_url ? obj.html_url : `https://gist.github.com/${id}`;
+  return { ...obj, id, html_url: htmlUrl };
+}
+
 export async function createGist(
   payload: CreateGistPayload,
   tokenOrClient?: string | AxiosInstance,
@@ -217,7 +243,7 @@ export async function createGist(
 
   try {
     const res = await client.post<{ id: string; html_url: string }>("/gists", payload);
-    return res.data;
+    return validateGistResponse(res, "Failed to create Gist");
   } catch (err: unknown) {
     throw new Error(await formatApiError(err, "Failed to create Gist"));
   }
@@ -242,7 +268,7 @@ export async function updateGist(
       `/gists/${encodeURIComponent(gistId)}`,
       payload
     );
-    return res.data;
+    return validateGistResponse(res, `Failed to update Gist ${gistId}`, gistId);
   } catch (err: unknown) {
     throw new Error(await formatApiError(err, `Failed to update Gist ${gistId}`));
   }

@@ -91,8 +91,8 @@ smcp share -o ./my-pack -s context7 -k subagent-orchestration -p opencode-gemini
 ### 8. Extensibility & Plugins Autoloader
 smcp automatically loads user extensions and plugins from:
 - Global plugins: \`~/.smcp/plugins/*.{js,mjs,cjs,ts}\`
-- Local project config: \`./smcp.config.{js,mjs,cjs,ts}\`
-- Local project plugins: \`./.smcp/plugins/*.{js,mjs,cjs,ts}\`
+- Local project config: \`./smcp.config.{js,mjs,cjs,ts}\` (opt-in: only with \`--allow-local-extensions\` or \`SMCP_ALLOW_LOCAL_EXTENSIONS=1\`)
+- Local project plugins: \`./.smcp/plugins/*.{js,mjs,cjs,ts}\` (opt-in, same as above)
 
 Extensions can customize every subsystem in smcp:
 \`\`\`js

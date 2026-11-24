@@ -26,10 +26,13 @@ export function getStoredAuthConfig(): AuthConfig {
 export function getAuthConfig(): AuthConfig {
   const saved = getStoredAuthConfig();
 
-  if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim().length > 0) {
+  const envToken = [process.env.GITHUB_TOKEN, process.env.GH_TOKEN].find(
+    (v) => typeof v === "string" && v.trim().length > 0
+  );
+  if (envToken) {
     return {
       ...saved,
-      githubToken: process.env.GITHUB_TOKEN.trim()
+      githubToken: envToken.trim()
     };
   }
 

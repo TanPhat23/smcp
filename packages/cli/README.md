@@ -38,7 +38,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.4.1
+# Output: 0.4.2
 ```
 
 ---
@@ -191,7 +191,7 @@ smcp instructions --json
 
 ## 🔌 Extensibility & Custom Plugins
 
-`smcp` supports dynamic plugins and runtime configuration files (`smcp.config.js`, `smcp.config.mjs`, or `~/.smcp/plugins/*.js`). You can extend:
+`smcp` supports dynamic plugins and runtime configuration files (`~/.smcp/plugins/*.js` by default). Project-local extensions (`./smcp.config.js`, `./.smcp/plugins/*`) execute arbitrary code, so they only load with `--allow-local-extensions` or `SMCP_ALLOW_LOCAL_EXTENSIONS=1`. You can extend:
 - **CLI Commands**: Add custom subcommands via `registerCliCommand()`.
 - **Lifecycle Hooks**: `beforeShare`, `afterShare`, `beforeInstall`, `afterInstall`.
 - **Storage Providers**: Swap file storage with SQLite, Keychain, or Redis via `registerStorageProvider()`.

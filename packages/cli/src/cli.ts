@@ -50,9 +50,13 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.4.1")
+    .version("0.4.2")
     .option("--no-plugins", "Disable loading plugins and extensions")
-    .option("--no-extensions", "Disable loading plugins and extensions");
+    .option("--no-extensions", "Disable loading plugins and extensions")
+    .option(
+      "--allow-local-extensions",
+      "Also load extensions from the current project (./smcp.config.*, ./.smcp/plugins). Only use in directories you trust"
+    );
 
   program.hook("preAction", async () => {
     if (userExtensionsLoaded) return;
@@ -60,7 +64,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     const opts = program.opts();
     const disabled = opts.plugins === false || opts.extensions === false;
     const isJson = Boolean(opts.json);
-    await loadUserExtensions({ disabled, json: isJson });
+    await loadUserExtensions({ disabled, json: isJson, allowLocal: Boolean(opts.allowLocalExtensions) });
   });
 
   program
@@ -280,7 +284,7 @@ export async function runCli(args: string[] = process.argv): Promise<void> {
 
   if (!disabled) {
     const isJson = args.includes("--json");
-    await loadUserExtensions({ json: isJson });
+    await loadUserExtensions({ json: isJson, allowLocal: args.includes("--allow-local-extensions") });
   }
 
   const program = createProgram({ extensionsLoaded: true });

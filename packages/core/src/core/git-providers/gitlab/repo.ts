@@ -10,7 +10,13 @@ import type {
   GitLabTreeItem
 } from "./types.ts";
 
-export function parseGitLabRepo(input: string): GitRepoRef | null {
+export function isGitLabHost(hostname: string, customHosts?: string[]): boolean {
+  const lower = hostname.toLowerCase();
+  if (customHosts && customHosts.some((h) => h.toLowerCase() === lower)) return true;
+  return lower === "gitlab.com" || lower === "www.gitlab.com";
+}
+
+export function parseGitLabRepo(input: string, customHosts?: string[]): GitRepoRef | null {
   if (!input || typeof input !== "string" || input.trim().length === 0) {
     return null;
   }
@@ -53,6 +59,8 @@ export function parseGitLabRepo(input: string): GitRepoRef | null {
     if (segments[0].includes(".") && segments.length >= 3) {
       host = segments[0];
       segments.shift();
+      // Never talk to (or send credentials to) a host the user hasn't configured.
+      if (!isGitLabHost(host, customHosts)) return null;
     }
 
     const repo = segments[segments.length - 1].replace(/\.git$/, "");
@@ -72,12 +80,7 @@ export function parseGitLabRepo(input: string): GitRepoRef | null {
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
       const u = new URL(trimmed);
-      const isGitLabHost =
-        u.hostname === "gitlab.com" ||
-        u.hostname === "www.gitlab.com" ||
-        u.hostname.includes("gitlab");
-
-      if (!isGitLabHost) {
+      if (!isGitLabHost(u.hostname, customHosts)) {
         return null;
       }
 

@@ -1,4 +1,3 @@
-import { getAuthConfig } from "../state/index.ts";
 import { getAllPackLoaders } from "./registry.ts";
 import type { LoadedPack, PackLoaderContext } from "./types.ts";
 
@@ -13,7 +12,10 @@ export async function loadPackFromSource(
   }
 
   const trimmedSource = source.trim();
-  const token = options?.token ?? getAuthConfig().githubToken;
+  // Only an explicitly supplied token is forwarded as-is. Otherwise each loader resolves the
+  // stored token for the provider that actually matched the source, so a GitHub token is
+  // never sent to GitLab/Gitea (or any other) host.
+  const token = options?.token;
   const context: PackLoaderContext = {
     source: trimmedSource,
     token,

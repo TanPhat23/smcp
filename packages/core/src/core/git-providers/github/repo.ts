@@ -274,6 +274,9 @@ export async function commitFilesToRepo(params: {
   // 2. Get latest commit SHA on target branch
   let baseCommitSha: string | undefined;
   let baseTreeSha: string | undefined;
+  let branchExists = false;
+  const isNotFound = (err: unknown) =>
+    isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 409);
 
   try {
     const refRes = await client.get<{ object: { sha: string } }>(
@@ -284,7 +287,11 @@ export async function commitFilesToRepo(params: {
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits/${encodeURIComponent(baseCommitSha)}`
     );
     baseTreeSha = commitRes.data.tree.sha;
-  } catch {
+    branchExists = true;
+  } catch (err) {
+    // Only "not found / empty repo" means the branch is missing; auth, rate-limit and
+    // server errors must surface instead of being mistaken for an empty repository.
+    if (!isNotFound(err)) throw err;
     // Branch might not exist yet; try default branch if different
     if (branch !== repoData.default_branch) {
       try {
@@ -296,7 +303,8 @@ export async function commitFilesToRepo(params: {
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits/${encodeURIComponent(baseCommitSha)}`
         );
         baseTreeSha = commitRes.data.tree.sha;
-      } catch {
+      } catch (err2) {
+        if (!isNotFound(err2)) throw err2;
         // Empty repo without commits
       }
     }
@@ -336,7 +344,7 @@ export async function commitFilesToRepo(params: {
   const newCommitSha = newCommitRes.data.sha;
 
   // 5. Update or create branch reference
-  if (baseCommitSha) {
+  if (branchExists) {
     await client.patch(
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/heads/${encodeURIComponent(branch)}`,
       { sha: newCommitSha, force: false }

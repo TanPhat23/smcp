@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.4.1-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.4.2-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
@@ -61,7 +61,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.4.1
+# Output: 0.4.2
 ```
 
 ---
@@ -455,6 +455,8 @@ node bin/smcp.js --help
 - **Zero Sensitive Data Storage:** Tokens and credentials provided during `smcp install` are injected exclusively into your local agent configurations. They are never written to `smcp.json` or transmitted to external servers.
 - **Strict File Permissions:** Authentication tokens stored in `~/.smcp/config.json` are created with `0600` permissions (read/write by owner only).
 - **Atomic File Writes:** Agent configurations are written atomically using temporary files and renamed in-place to prevent file corruption during interruptions. If an existing config is not valid JSON (for example half-written by the agent itself), smcp aborts with an error and leaves the file untouched instead of overwriting it.
+- **Credential Scoping:** Each git provider only receives its own stored token, and only for exact known hosts (`github.com`, `gitlab.com`, `gitea.com`, `codeberg.org`) or hosts you explicitly configure. Look-alike or arbitrary hosts never receive credentials.
+- **No Implicit Code Execution:** Extensions in the current project (`./smcp.config.*`, `./.smcp/plugins`) are skipped unless you pass `--allow-local-extensions` (or set `SMCP_ALLOW_LOCAL_EXTENSIONS=1`).
 - **Path Traversal Protection:** Skill unpackers strictly enforce that relative file paths remain bounded within the destination directory.
 
 ---

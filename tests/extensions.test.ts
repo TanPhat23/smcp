@@ -66,7 +66,7 @@ describe("CLI Extension / Plugin Autoloader (src/core/extensions)", () => {
     const localExt = path.join(localPluginsDir, "local-ext.ts");
     fs.writeFileSync(localExt, `// local plugin extension\n`, "utf8");
 
-    const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir });
+    const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir, allowLocal: true });
 
     expect(loaded.length).toBe(3);
     expect(loaded.some((p) => p.endsWith("global-ext.ts"))).toBe(true);
@@ -225,10 +225,41 @@ registerAuthProvider({
     fs.writeFileSync(jsConfig, "// js config\n", "utf8");
     fs.writeFileSync(tsConfig, "// ts config\n", "utf8");
 
-    const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir });
+    const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir, allowLocal: true });
     expect(loaded.length).toBe(1);
     expect(loaded[0]).toBe(jsConfig);
     expect(loaded.includes(tsConfig)).toBe(false);
+  });
+
+  it("does not execute project-local extensions unless explicitly allowed", async () => {
+    const marker = path.join(testCwd, "pwned.txt");
+    fs.writeFileSync(
+      path.join(testCwd, "smcp.config.js"),
+      `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "x");\n`,
+      "utf8"
+    );
+    const localDir = path.join(testCwd, ".smcp", "plugins");
+    fs.mkdirSync(localDir, { recursive: true });
+    fs.writeFileSync(path.join(localDir, "p.js"), `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "y");\n`, "utf8");
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir });
+      expect(loaded).toEqual([]);
+      expect(fs.existsSync(marker)).toBe(false);
+      expect(warn.mock.calls.some((c) => String(c[0]).includes("--allow-local-extensions"))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+
+    process.env.SMCP_ALLOW_LOCAL_EXTENSIONS = "1";
+    try {
+      const loaded = await loadUserExtensions({ cwd: testCwd, smcpDir: testSmcpDir });
+      expect(loaded.length).toBeGreaterThan(0);
+      expect(fs.existsSync(marker)).toBe(true);
+    } finally {
+      delete process.env.SMCP_ALLOW_LOCAL_EXTENSIONS;
+    }
   });
 
   it("respects --no-plugins and --no-extensions in CLI program", async () => {

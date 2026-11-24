@@ -64,7 +64,7 @@ describe("Gitea / Forgejo Git Provider", () => {
       subpath: undefined
     });
 
-    const ref3 = parseGiteaRepo("https://forgejo.internal.corp/team/agent-pack/src/branch/main/skills/sub");
+    const ref3 = parseGiteaRepo("https://forgejo.internal.corp/team/agent-pack/src/branch/main/skills/sub", ["forgejo.internal.corp"]);
     expect(ref3).toEqual({
       provider: "gitea",
       host: "forgejo.internal.corp",
@@ -74,7 +74,7 @@ describe("Gitea / Forgejo Git Provider", () => {
       subpath: "skills/sub"
     });
 
-    const ref4 = parseGiteaRepo("gitea:git.custom-host.io/org/repo");
+    const ref4 = parseGiteaRepo("gitea:git.custom-host.io/org/repo", ["git.custom-host.io"]);
     expect(ref4).toEqual({
       provider: "gitea",
       host: "git.custom-host.io",
@@ -83,6 +83,15 @@ describe("Gitea / Forgejo Git Provider", () => {
       ref: undefined,
       subpath: undefined
     });
+  });
+
+  it("never treats look-alike or unconfigured hosts as Gitea (credential safety)", () => {
+    expect(parseGiteaRepo("https://my-gitea-evil.test/o/r")).toBeNull();
+    expect(parseGiteaRepo("https://codeberg.evil.test/o/r")).toBeNull();
+    expect(parseGiteaRepo("https://forgejo.evil.test/o/r")).toBeNull();
+    expect(parseGiteaRepo("gitea:evil.test/o/r")).toBeNull();
+    expect(new GiteaGitProvider().matchesRepo("gitea:evil.test/o/r")).toBe(false);
+    expect(new GiteaGitProvider({ customHosts: ["git.corp.io"] }).matchesRepo("https://git.corp.io/o/r")).toBe(true);
   });
 
   it("does not match non-Gitea sources", () => {

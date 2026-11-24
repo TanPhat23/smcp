@@ -88,7 +88,7 @@ describe("GitLab Git Provider", () => {
   });
 
   it("handles self-hosted GitLab hosts correctly", () => {
-    const ref = parseGitLabRepo("https://gitlab.corp.internal/enterprise/agent-pack/-/tree/main/subfolder");
+    const ref = parseGitLabRepo("https://gitlab.corp.internal/enterprise/agent-pack/-/tree/main/subfolder", ["gitlab.corp.internal"]);
     expect(ref).toEqual({
       provider: "gitlab",
       host: "gitlab.corp.internal",
@@ -97,6 +97,13 @@ describe("GitLab Git Provider", () => {
       ref: "main",
       subpath: "subfolder"
     });
+  });
+
+  it("never treats look-alike or unconfigured hosts as GitLab (credential safety)", () => {
+    expect(parseGitLabRepo("https://gitlab.evil.test/o/r")).toBeNull();
+    expect(parseGitLabRepo("https://notgitlab.com/o/r")).toBeNull();
+    expect(parseGitLabRepo("gitlab:evil.test/o/r/x")).toBeNull();
+    expect(parseGitLabRepo("gitlab:gitlab.corp.io/g/p/x", ["gitlab.corp.io"])?.host).toBe("gitlab.corp.io");
   });
 
   it("resolves through git-providers registry for GitLab sources", () => {

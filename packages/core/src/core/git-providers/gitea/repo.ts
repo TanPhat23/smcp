@@ -10,19 +10,18 @@ import type {
   GiteaTreeResponse
 } from "./types.ts";
 
-function isGiteaHost(hostname: string, customHosts?: string[]): boolean {
+export function isGiteaHost(hostname: string, customHosts?: string[]): boolean {
   const lower = hostname.toLowerCase();
   if (customHosts && customHosts.some((h) => h.toLowerCase() === lower)) {
     return true;
   }
+  // Exact well-known hosts only. Substring matching (e.g. includes("gitea")) would
+  // let any attacker-chosen domain receive the user's credentials.
   return (
     lower === "gitea.com" ||
     lower.endsWith(".gitea.com") ||
-    lower.includes("gitea") ||
     lower === "codeberg.org" ||
-    lower.endsWith(".codeberg.org") ||
-    lower.includes("codeberg") ||
-    lower.includes("forgejo")
+    lower.endsWith(".codeberg.org")
   );
 }
 
@@ -64,6 +63,7 @@ export function parseGiteaRepo(input: string, customHosts?: string[]): GitRepoRe
     if (segments[0].includes(".") && segments.length >= 3) {
       host = segments[0];
       segments.shift();
+      if (!isGiteaHost(host, customHosts)) return null;
     }
 
     const repo = segments[segments.length - 1].replace(/\.git$/, "");

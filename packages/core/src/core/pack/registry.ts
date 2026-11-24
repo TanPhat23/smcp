@@ -4,6 +4,7 @@ import { ManifestSchema } from "../../types/index.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
 import { resolveGitProviderForSource } from "../git-providers/index.ts";
 import { GitHubClient } from "../github.ts";
+import { getAuthToken } from "../state/index.ts";
 import type { LoadedPack, PackLoader, PackLoaderContext } from "./types.ts";
 
 export class LocalPackLoader implements PackLoader {
@@ -58,7 +59,7 @@ export class GitRepoPackLoader implements PackLoader {
       throw new Error(`Failed to parse repository source with provider '${provider.id}': ${trimmed}`);
     }
     const repoPack = await provider.fetchRepoPack(parsedRepo, {
-      token: context.token,
+      token: context.token ?? getAuthToken(provider.id),
       noCache: context.noCache
     });
     return {
@@ -93,7 +94,7 @@ export class SnippetPackLoader implements PackLoader {
       const parsedSnippet = provider.parseSnippet ? provider.parseSnippet(trimmed) : null;
       if (parsedSnippet) {
         const snippetPack = await provider.fetchSnippetPack(parsedSnippet, {
-          token: context.token,
+          token: context.token ?? getAuthToken(provider.id),
           noCache: context.noCache,
           fetchAllTruncated: context.fetchAllTruncated
         });
@@ -104,7 +105,7 @@ export class SnippetPackLoader implements PackLoader {
       }
     }
 
-    const gist = await GitHubClient.fetchGist(trimmed, context.token, {
+    const gist = await GitHubClient.fetchGist(trimmed, context.token ?? getAuthToken("github"), {
       noCache: context.noCache,
       fetchAllTruncated: context.fetchAllTruncated
     });
