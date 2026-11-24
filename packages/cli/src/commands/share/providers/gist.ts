@@ -10,6 +10,11 @@ import {
 import { authLoginCommand } from "../../auth/login.ts";
 import type { ShareProvider, ShareProviderContext } from "./types.ts";
 
+/** GitHub always returns html_url; derive a canonical URL if a proxy/response omits it. */
+function gistUrlFromId(id: string | undefined): string {
+  return id ? `https://gist.github.com/${id}` : "";
+}
+
 export class GistShareProvider implements ShareProvider {
   readonly id = "gist";
   readonly label = "GitHub Gist";
@@ -86,15 +91,19 @@ export class GistShareProvider implements ShareProvider {
           description: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
           files: gistFiles
         });
-        resultUrl = res.html_url;
+        resultUrl = res.html_url || gistUrlFromId(res.id || targetGistId);
       } else {
         const res = await client.createGist({
           description: `[smcp] ${cleanPackName} v${version} - ${cleanPackDesc}`,
           public: isPublic,
           files: gistFiles
         });
-        resultUrl = res.html_url;
         finalGistId = res.id;
+        resultUrl = res.html_url || gistUrlFromId(res.id);
+      }
+
+      if (!resultUrl) {
+        throw new Error("GitHub accepted the request but returned neither html_url nor a Gist id");
       }
 
       if (finalGistId) {
