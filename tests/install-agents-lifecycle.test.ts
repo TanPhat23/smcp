@@ -66,7 +66,7 @@ describe("Install, State Tracking & Uninstall of Agents", () => {
     expect(parsedInstall.installedAgents).toContain("tester");
 
     const opencodeAgentPath = path.join(homeDir, ".config", "opencode", "agents", "tester.md");
-    const claudeAgentPath = path.join(homeDir, ".claude", "commands", "tester.md");
+    const claudeAgentPath = path.join(homeDir, ".claude", "agents", "tester.md");
     expect(fs.existsSync(opencodeAgentPath)).toBe(true);
     expect(fs.existsSync(claudeAgentPath)).toBe(true);
 
@@ -270,7 +270,7 @@ describe("Install, State Tracking & Uninstall of Agents", () => {
     expect(content).toContain("Prompt");
   });
 
-  it("installs agent with claude custom command override, tracks aliases in installed.json, and uninstalls cleanly without leaving orphans", () => {
+  it("ignores slash-command-only claude overrides, installs a subagent named after the agent, and uninstalls cleanly", () => {
     const tmp = makeTmpDir();
     const homeDir = path.join(tmp, "home");
     const packDir = path.join(tmp, "pack");
@@ -316,19 +316,18 @@ describe("Install, State Tracking & Uninstall of Agents", () => {
     const parsedInstall = JSON.parse(installOut);
     expect(parsedInstall.success).toBe(true);
     expect(parsedInstall.installedAgents).toContain("reviewer");
-    expect(parsedInstall.installedAgents).toContain("custom-cmd");
+    expect(parsedInstall.installedAgents).not.toContain("custom-cmd");
 
     const opencodeAgentPath = path.join(homeDir, ".config", "opencode", "agents", "reviewer.md");
-    const claudeAgentPath = path.join(homeDir, ".claude", "commands", "custom-cmd.md");
+    const claudeAgentPath = path.join(homeDir, ".claude", "agents", "reviewer.md");
     expect(fs.existsSync(opencodeAgentPath)).toBe(true);
     expect(fs.existsSync(claudeAgentPath)).toBe(true);
 
-    // 2. Verify state in ~/.smcp/installed.json tracks both reviewer and custom-cmd
+    // 2. Verify state in ~/.smcp/installed.json tracks the agent
     const installedJsonPath = path.join(homeDir, ".smcp", "installed.json");
     expect(fs.existsSync(installedJsonPath)).toBe(true);
     const installedRecords = JSON.parse(fs.readFileSync(installedJsonPath, "utf8"));
     expect(installedRecords["override-pack"].installedAgents).toContain("reviewer");
-    expect(installedRecords["override-pack"].installedAgents).toContain("custom-cmd");
 
     // 3. Uninstall
     const uninstallOut = execSync(
