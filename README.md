@@ -184,10 +184,18 @@ Security is the primary directive of `smcp`. The redaction engine prevents accid
 | AI Agent | MCP Configuration Path(s) | Skills Directory |
 | :--- | :--- | :--- |
 | **OpenCode** | `~/.config/opencode/opencode.json`<br>`./opencode.json` | `~/.config/opencode/skills`<br>`./.opencode/skills` |
-| **Claude Code** | `~/.claude.json`<br>`./.claude.json` | `~/.claude/skills`<br>`./skills` |
+| **Claude Code** | `~/.claude.json`<br>`./.mcp.json` | `~/.claude/skills`<br>`./.claude/skills` |
 | **Claude Desktop** | `~/.config/Claude/claude_desktop_config.json`<br>`~/Library/Application Support/Claude/claude_desktop_config.json`<br>`%APPDATA%/Claude/claude_desktop_config.json` | *(MCP only)* |
 | **Cursor** | `~/.cursor/mcp.json`<br>`./.cursor/mcp.json` | `~/.cursor/skills`<br>`./.cursor/rules` |
 | **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/skills` |
+
+**Claude Code notes:**
+- Project scope (`--project`) writes only files Claude Code reads: `./.mcp.json`, `./.claude/skills`, `./.claude/settings.json` / `./.claude/settings.local.json` (plugins) and `./.claude/agents`.
+- Shared agents are installed as **subagents** in `~/.claude/agents/<name>.md` (`name`, `description`, `tools`, `model` frontmatter), not as slash commands.
+- Plugins are enabled in `enabledPlugins` only as `name@marketplace` ids; bare names are skipped with a warning because Claude Code only loads marketplace-installed plugins.
+- Remote (URL) servers are written with `type: "http"` (or `"sse"` for `/sse` URLs).
+- `-a claude` targets Claude Code only. Use `-a claude-desktop` to target Claude Desktop explicitly.
+- `smcp list` also shows project-scoped servers stored under `projects[<cwd>]` in `~/.claude.json`.
 
 ### Custom Agent Profiles
 Want to support an internal tool, a fork, or a new AI coding assistant? Register custom declarative agent profiles in seconds without modifying source code:
@@ -446,7 +454,7 @@ node bin/smcp.js --help
 
 - **Zero Sensitive Data Storage:** Tokens and credentials provided during `smcp install` are injected exclusively into your local agent configurations. They are never written to `smcp.json` or transmitted to external servers.
 - **Strict File Permissions:** Authentication tokens stored in `~/.smcp/config.json` are created with `0600` permissions (read/write by owner only).
-- **Atomic File Writes:** Agent configurations are written atomically using temporary files and renamed in-place to prevent file corruption during interruptions. If malformed JSON is detected, a `.bak` backup copy is preserved automatically.
+- **Atomic File Writes:** Agent configurations are written atomically using temporary files and renamed in-place to prevent file corruption during interruptions. If an existing config is not valid JSON (for example half-written by the agent itself), smcp aborts with an error and leaves the file untouched instead of overwriting it.
 - **Path Traversal Protection:** Skill unpackers strictly enforce that relative file paths remain bounded within the destination directory.
 
 ---
