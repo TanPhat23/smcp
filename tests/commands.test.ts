@@ -927,6 +927,60 @@ describe("Commands Implementation", () => {
         GitHubClient.prototype.commitFilesToRepo = origCommit;
       }
     });
+
+    it("shareCommand detects existing repo share by --repo URL or slug without requiring --name", async () => {
+      setupMockAgentWithServer();
+      saveAuthConfig({ githubToken: "ghp_full_token", githubUser: "octocat" });
+
+      recordShare({
+        name: "gemini",
+        version: "1.0.3",
+        targetType: "repo",
+        targetUrl: "https://github.com/octocat/gemini-configs",
+        repoFullName: "octocat/gemini-configs",
+        lastSharedAt: new Date().toISOString(),
+        fingerprints: { mcpServers: {}, skills: {} }
+      });
+
+      const origVerify = GitHubClient.prototype.verifyUser;
+      const origCommit = GitHubClient.prototype.commitFilesToRepo;
+      let committedParams: { owner?: string; repo?: string; message?: string } = {};
+
+      GitHubClient.prototype.verifyUser = async () => ({
+        login: "octocat",
+        name: "Octocat",
+        scopes: ["repo"],
+        hasRepoScope: true
+      });
+
+      GitHubClient.prototype.commitFilesToRepo = async (params) => {
+        committedParams = { owner: params.owner, repo: params.repo, message: params.message };
+        return {
+          commitSha: "sha_url_match",
+          html_url: `https://github.com/${params.owner}/${params.repo}`,
+          branch: "main"
+        };
+      };
+
+      try {
+        await shareCommand({
+          provider: "repo",
+          repo: "https://github.com/octocat/gemini-configs",
+          servers: ["testServer"],
+          skills: [],
+          plugins: [],
+          yes: true,
+          json: true
+        });
+
+        expect(committedParams.owner).toBe("octocat");
+        expect(committedParams.repo).toBe("gemini-configs");
+        expect(committedParams.message).toContain("gemini v1.0.4");
+      } finally {
+        GitHubClient.prototype.verifyUser = origVerify;
+        GitHubClient.prototype.commitFilesToRepo = origCommit;
+      }
+    });
   });
 
   describe("install command helpers & templating", () => {

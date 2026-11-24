@@ -38,7 +38,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.5.2
+# Output: 0.5.3
 ```
 
 ---

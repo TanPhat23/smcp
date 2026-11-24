@@ -149,16 +149,11 @@ export class RepoShareProvider implements ShareProvider {
       }
     }
 
-    let repoFullName = targetRepoInput || cleanPackName;
-    let owner = userLogin;
-    let repoName = repoFullName;
-    if (repoFullName.includes("/")) {
-      const parts = repoFullName.split("/");
-      owner = parts[0];
-      repoName = parts[1];
-    } else {
-      repoFullName = `${owner}/${repoName}`;
-    }
+    const rawTarget = (targetRepoInput || cleanPackName).trim();
+    const parsedRepo = GitHubClient.parseRepo(rawTarget);
+    let owner = parsedRepo?.owner || userLogin;
+    let repoName = parsedRepo?.repo || rawTarget.replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
+    const repoFullName = `${owner}/${repoName}`;
 
     let isPublic = options?.isPublic ?? options?.public;
     if (isPublic === undefined) {

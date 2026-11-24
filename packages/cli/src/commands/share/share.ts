@@ -2,6 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import path from "node:path";
 import {
+  GitHubClient,
   detectAgents,
   filterAgents,
   getAgentProfiles,
@@ -17,12 +18,61 @@ import {
   type PluginEntry,
   type ScannedAgentEntry,
   type ShareCommandOptions,
+  type ShareRecord,
   type SkillEntry
 } from "@tanphat/smcp-core";
 import { bundleAgentFilesForShare, bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
 import { getAllShareProviders, getShareProvider } from "./providers/index.ts";
 
 export type { ShareCommandOptions } from "@tanphat/smcp-core";
+
+function bumpPatchVersion(version: string): string {
+  const parts = version.split(".").map(Number);
+  return parts.length === 3 && parts.every((n) => !Number.isNaN(n))
+    ? `${parts[0]}.${parts[1]}.${parts[2] + 1}`
+    : "1.0.1";
+}
+
+function normalizeRepoIdentifier(input: string): { fullName?: string; slug: string } {
+  const trimmed = input.trim();
+  const parsed = GitHubClient.parseRepo(trimmed);
+  if (parsed) {
+    return {
+      fullName: `${parsed.owner}/${parsed.repo}`,
+      slug: parsed.repo
+    };
+  }
+  const cleanSlug = trimmed.replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
+  return { slug: cleanSlug };
+}
+
+function repoMatchesShare(share: ShareRecord, repoInput: string): boolean {
+  if (share.targetType !== "repo") return false;
+  const normalized = normalizeRepoIdentifier(repoInput);
+  const storedFull = share.repoFullName?.toLowerCase();
+  const storedUrl = share.targetUrl.toLowerCase();
+  if (normalized.fullName) {
+    const lowerFull = normalized.fullName.toLowerCase();
+    return storedFull === lowerFull || storedUrl === `https://github.com/${lowerFull}`;
+  }
+  if (storedFull) {
+    return storedFull.split("/").pop() === normalized.slug.toLowerCase();
+  }
+  return false;
+}
+
+function findExistingShareRecord(
+  shares: readonly ShareRecord[],
+  criteria: { cleanPackName: string; targetProvider: string; targetRepoInput?: string }
+): ShareRecord | undefined {
+  if (criteria.targetProvider === "repo" && criteria.targetRepoInput) {
+    const byRepo = shares.find((s) => repoMatchesShare(s, criteria.targetRepoInput!));
+    if (byRepo) return byRepo;
+  }
+  return shares.find(
+    (s) => s.name === criteria.cleanPackName && s.targetType === criteria.targetProvider
+  );
+}
 
 export async function shareCommand(options?: ShareCommandOptions): Promise<void> {
   const isAgentMode = Boolean(options?.json);
@@ -304,16 +354,93 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     sRedact.stop(pc.green(`✔ Redacted secrets. Generated ${requiredEnv.length} environment placeholders.`));
   }
 
-  // 6. Pack Details
+  // 6. Pack Details & Share Target
+  const history = getSharesHistory();
+  let selectedExistingShare: ShareRecord | undefined = undefined;
   let packName = options?.name;
+  let targetProvider: "gist" | "repo" | "local" = "gist";
+  let targetLocalOutDir: string | undefined = undefined;
+  let targetRepoInput: string | undefined = options?.repo?.trim() || undefined;
+  let targetGistId: string | undefined = undefined;
+  let version = "1.0.0";
+
+  // Interactive shortcut: let user pick an existing share directly instead of re-entering pack & repo names
+  const canOfferExistingPicker =
+    !isNonInteractive &&
+    !options?.name &&
+    !options?.repo &&
+    !options?.output &&
+    history.shares.length > 0;
+
+  if (canOfferExistingPicker) {
+    const matchingHistory = options?.provider
+      ? history.shares.filter((s) => s.targetType === options.provider)
+      : history.shares;
+
+    if (matchingHistory.length > 0) {
+      const sortedShares = [...matchingHistory].sort((a, b) =>
+        b.lastSharedAt.localeCompare(a.lastSharedAt)
+      );
+      const pickedShareChoice = await p.select({
+        message: "Update a previous share or create a new one?",
+        options: [
+          ...sortedShares.map((s, idx) => ({
+            value: `existing:${idx}`,
+            label: `Update '${s.name}' (v${s.version} -> v${bumpPatchVersion(s.version)})`,
+            hint: `${s.targetType}: ${s.targetType === "repo" ? s.repoFullName || s.targetUrl : s.targetUrl}`
+          })),
+          {
+            value: "new",
+            label: "Create a new share",
+            hint: "Specify pack name and destination"
+          }
+        ]
+      });
+
+      if (p.isCancel(pickedShareChoice)) {
+        p.cancel("Operation cancelled.");
+        return;
+      }
+
+      if (typeof pickedShareChoice === "string" && pickedShareChoice.startsWith("existing:")) {
+        const idx = Number(pickedShareChoice.slice("existing:".length));
+        const chosen = sortedShares[idx];
+        if (chosen) {
+          selectedExistingShare = chosen;
+          packName = chosen.name;
+          targetProvider = chosen.targetType;
+          version = bumpPatchVersion(chosen.version);
+          if (chosen.targetType === "repo") {
+            targetRepoInput = chosen.repoFullName || chosen.targetUrl;
+          } else if (chosen.targetType === "gist") {
+            targetGistId = chosen.gistId;
+          } else if (chosen.targetType === "local") {
+            targetLocalOutDir = chosen.targetUrl;
+          }
+        }
+      }
+    }
+  }
+
+  // If --repo was given without --name, default pack name to existing matching share or repo slug
+  const repoMatchedFromFlag =
+    !packName && targetRepoInput
+      ? history.shares.find((s) => repoMatchesShare(s, targetRepoInput!))
+      : undefined;
+  const defaultPackName = repoMatchedFromFlag
+    ? repoMatchedFromFlag.name
+    : targetRepoInput
+    ? normalizeRepoIdentifier(targetRepoInput).slug || "my-agent-pack"
+    : "my-agent-pack";
+
   if (!packName) {
     if (!process.stdin.isTTY) {
-      packName = "my-agent-pack";
+      packName = defaultPackName;
     } else {
       const answer = await p.text({
         message: "Pack name:",
-        defaultValue: "my-agent-pack",
-        placeholder: "my-agent-pack",
+        defaultValue: defaultPackName,
+        placeholder: defaultPackName,
         validate: (val) => {
           if (!val || !val.trim()) return "Pack name is required";
           if (!/^[a-zA-Z0-9_-]+$/.test(val.trim())) {
@@ -360,107 +487,95 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   }
   const cleanPackDesc = (packDesc && packDesc.trim()) || "Shared Skills and MCP stack";
 
-  // 6b. Resolve target share provider
-  let targetProvider: "gist" | "repo" | "local" = "gist";
-  let targetLocalOutDir: string | undefined = undefined;
-  let targetRepoInput: string | undefined = options?.repo;
-
-  if (options?.output) {
-    targetProvider = "local";
-    targetLocalOutDir = path.resolve(options.output);
-  } else if (options?.repo) {
-    targetProvider = "repo";
-    targetRepoInput = options.repo.trim();
-  } else if (options?.provider) {
-    const resolvedProvider = getShareProvider(options.provider);
-    if (!resolvedProvider) {
-      const supported = getAllShareProviders().map((p) => p.id).join(", ");
-      const errMsg = `Unsupported provider: ${options.provider}. Supported providers: ${supported}.`;
-      if (isAgentMode) {
-        console.error(JSON.stringify({ success: false, error: errMsg }));
-      } else {
-        p.cancel(errMsg);
+  // 6b. Resolve target share provider (when not already chosen from existing share)
+  if (!selectedExistingShare) {
+    if (options?.output) {
+      targetProvider = "local";
+      targetLocalOutDir = path.resolve(options.output);
+    } else if (targetRepoInput) {
+      targetProvider = "repo";
+    } else if (options?.provider) {
+      const resolvedProvider = getShareProvider(options.provider);
+      if (!resolvedProvider) {
+        const supported = getAllShareProviders().map((p) => p.id).join(", ");
+        const errMsg = `Unsupported provider: ${options.provider}. Supported providers: ${supported}.`;
+        if (isAgentMode) {
+          console.error(JSON.stringify({ success: false, error: errMsg }));
+        } else {
+          p.cancel(errMsg);
+        }
+        return;
       }
-      return;
-    }
-    targetProvider = resolvedProvider.id as "gist" | "repo" | "local";
-    if (targetProvider === "local") {
-      targetLocalOutDir = path.resolve(`./${cleanPackName}`);
-    }
-  } else if (isNonInteractive) {
-    targetProvider = "gist";
-  } else {
-    const availableProviders = getAllShareProviders();
-    const providerPrompt = await p.select({
-      message: "Choose share provider:",
-      options: availableProviders.map((pr) => ({
-        value: pr.id,
-        label: pr.label,
-        hint: pr.hint
-      })),
-      initialValue: "gist"
-    });
-    if (p.isCancel(providerPrompt)) {
-      p.cancel("Operation cancelled.");
-      return;
-    }
-    targetProvider = providerPrompt as "gist" | "repo" | "local";
-
-    if (targetProvider === "local") {
-      const dirPrompt = await p.text({
-        message: "Export folder path:",
-        defaultValue: `./${cleanPackName}`,
-        placeholder: `./${cleanPackName}`,
-        validate: (val) => (!val || !val.trim() ? "Folder path is required" : undefined)
+      targetProvider = resolvedProvider.id as "gist" | "repo" | "local";
+      if (targetProvider === "local") {
+        targetLocalOutDir = path.resolve(`./${cleanPackName}`);
+      }
+    } else if (isNonInteractive) {
+      targetProvider = "gist";
+    } else {
+      const availableProviders = getAllShareProviders();
+      const providerPrompt = await p.select({
+        message: "Choose share provider:",
+        options: availableProviders.map((pr) => ({
+          value: pr.id,
+          label: pr.label,
+          hint: pr.hint
+        })),
+        initialValue: "gist"
       });
-      if (p.isCancel(dirPrompt) || typeof dirPrompt !== "string") {
+      if (p.isCancel(providerPrompt)) {
         p.cancel("Operation cancelled.");
         return;
       }
-      targetLocalOutDir = path.resolve(dirPrompt.trim());
-    } else if (targetProvider === "repo" && !targetRepoInput) {
-      const repoPrompt = await p.text({
-        message: "GitHub repository name (e.g. my-agent-pack or owner/my-agent-pack):",
-        defaultValue: cleanPackName,
-        placeholder: cleanPackName,
-        validate: (val) => (!val || !val.trim() ? "Repository name is required" : undefined)
-      });
-      if (p.isCancel(repoPrompt) || typeof repoPrompt !== "string") {
-        p.cancel("Operation cancelled.");
-        return;
+      targetProvider = providerPrompt as "gist" | "repo" | "local";
+
+      if (targetProvider === "local") {
+        const dirPrompt = await p.text({
+          message: "Export folder path:",
+          defaultValue: `./${cleanPackName}`,
+          placeholder: `./${cleanPackName}`,
+          validate: (val) => (!val || !val.trim() ? "Folder path is required" : undefined)
+        });
+        if (p.isCancel(dirPrompt) || typeof dirPrompt !== "string") {
+          p.cancel("Operation cancelled.");
+          return;
+        }
+        targetLocalOutDir = path.resolve(dirPrompt.trim());
       }
-      targetRepoInput = repoPrompt.trim();
     }
   }
 
-  // 7. Check existing shares & version bump
-  const history = getSharesHistory();
-  const existingShare = history.shares.find((s) => s.name === cleanPackName);
-  let version = "1.0.0";
-  let targetGistId: string | undefined = undefined;
+  // 7. Match existing shares & resolve version bump consistently by repo or pack name
+  let existingShare =
+    selectedExistingShare ??
+    findExistingShareRecord(history.shares, {
+      cleanPackName,
+      targetProvider,
+      targetRepoInput
+    });
 
-  if (existingShare) {
-    const parts = existingShare.version.split(".").map(Number);
-    const nextPatch =
-      parts.length === 3 && parts.every((n) => !isNaN(n))
-        ? `${parts[0]}.${parts[1]}.${parts[2] + 1}`
-        : "1.0.1";
-
+  if (selectedExistingShare) {
+    // Already confirmed update target above
+  } else if (existingShare) {
+    const nextPatch = bumpPatchVersion(existingShare.version);
     const destInfo =
       existingShare.targetType === "gist"
         ? `Gist: ${existingShare.targetUrl}`
         : existingShare.targetType === "repo"
-        ? `Repository: ${existingShare.targetUrl}`
+        ? `Repository: ${existingShare.repoFullName || existingShare.targetUrl}`
         : `Local directory: ${existingShare.targetUrl}`;
 
-    if (options?.name !== undefined || !process.stdin.isTTY) {
+    if (options?.name !== undefined || targetRepoInput !== undefined || !process.stdin.isTTY || isNonInteractive) {
       version = nextPatch;
       if (targetProvider === "gist") {
         targetGistId = existingShare.gistId;
       }
+      if (targetProvider === "repo" && !targetRepoInput && existingShare.repoFullName) {
+        targetRepoInput = existingShare.repoFullName;
+      }
     } else {
       const action = await p.select({
-        message: `Pack '${cleanPackName}' was previously shared (v${existingShare.version} to ${destInfo}). How to proceed?`,
+        message: `Pack '${existingShare.name}' was previously shared (v${existingShare.version} to ${destInfo}). How to proceed?`,
         options: [
           {
             value: "update",
@@ -485,6 +600,33 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
         }
       } else {
         version = "1.0.0";
+      }
+    }
+  }
+
+  // Prompt for GitHub repository only if still unspecified after checking existing shares
+  if (targetProvider === "repo" && !targetRepoInput && !isNonInteractive) {
+    const repoPrompt = await p.text({
+      message: "GitHub repository name (e.g. my-agent-pack or owner/my-agent-pack):",
+      defaultValue: cleanPackName,
+      placeholder: cleanPackName,
+      validate: (val) => (!val || !val.trim() ? "Repository name is required" : undefined)
+    });
+    if (p.isCancel(repoPrompt) || typeof repoPrompt !== "string") {
+      p.cancel("Operation cancelled.");
+      return;
+    }
+    targetRepoInput = repoPrompt.trim();
+
+    if (!existingShare) {
+      const repoMatch = findExistingShareRecord(history.shares, {
+        cleanPackName,
+        targetProvider: "repo",
+        targetRepoInput
+      });
+      if (repoMatch) {
+        existingShare = repoMatch;
+        version = bumpPatchVersion(repoMatch.version);
       }
     }
   }
