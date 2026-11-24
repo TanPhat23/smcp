@@ -38,14 +38,14 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.4.3
+# Output: 0.5.0
 ```
 
 ---
 
 ## ⚡ The Problem `smcp` Solves
 
-Modern AI coding agents (OpenCode, Claude Code, Cursor, Windsurf) rely on two core components:
+Modern AI coding agents (OpenCode, Claude Code, Antigravity, Cursor, Windsurf) rely on two core components:
 1. **Agent Skills:** System instructions, workflows, and task guidelines (`.opencode/skills`, `.claude/skills`, `.cursor/rules`).
 2. **MCP Servers:** Model Context Protocol tool integrations (PostgreSQL, GitHub, Linear, Brave Search, etc.) configured in client-specific files (`opencode.json`, `~/.claude.json`, `.cursor/mcp.json`).
 

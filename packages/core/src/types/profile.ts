@@ -18,9 +18,9 @@ export const AgentProfileSchema = z.object({
     .optional(),
   plugins: z
     .object({
-      paths: z.array(z.string()),
+      paths: z.array(z.string()).default([]),
       key: z.string().default("plugin"),
-      format: z.enum(["array", "map"]).default("array"),
+      format: z.enum(["array", "map", "directory"]).default("array"),
       dirPaths: z.array(z.string()).optional()
     })
     .nullable()

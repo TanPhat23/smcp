@@ -110,6 +110,29 @@ export function resolveActiveAgentPath(
     : (path.isAbsolute(first) ? first : path.resolve(cwd, first));
 }
 
+function findFirstExistingPath(
+  paths: readonly string[] | undefined,
+  kind: "file" | "directory"
+): string | null {
+  if (!paths || !Array.isArray(paths)) {
+    return null;
+  }
+  for (const p of paths) {
+    try {
+      const expanded = expandHome(p);
+      if (fs.existsSync(expanded)) {
+        const stat = fs.statSync(expanded);
+        if (kind === "file" ? stat.isFile() : stat.isDirectory()) {
+          return expanded;
+        }
+      }
+    } catch {
+      // Ignore path access error
+    }
+  }
+  return null;
+}
+
 export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedAgent[] {
   const activeProfiles = profiles || getAgentProfiles();
   const detected: DetectedAgent[] = [];
@@ -118,97 +141,11 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
     if (isPrototypePollutionKey(id)) continue;
     if (!profile || typeof profile !== "object") continue;
 
-    let resolvedMcpPath: string | null = null;
-    let resolvedSkillsPath: string | null = null;
-
-    if (profile.mcpConfig && Array.isArray(profile.mcpConfig.paths)) {
-      for (const p of profile.mcpConfig.paths) {
-        try {
-          const expanded = expandHome(p);
-          if (fs.existsSync(expanded)) {
-            const stat = fs.statSync(expanded);
-            if (stat.isFile()) {
-              resolvedMcpPath = expanded;
-              break;
-            }
-          }
-        } catch {
-          // Ignore path access error
-        }
-      }
-    }
-
-    if (profile.skills && Array.isArray(profile.skills.paths)) {
-      for (const p of profile.skills.paths) {
-        try {
-          const expanded = expandHome(p);
-          if (fs.existsSync(expanded)) {
-            const stat = fs.statSync(expanded);
-            if (stat.isDirectory()) {
-              resolvedSkillsPath = expanded;
-              break;
-            }
-          }
-        } catch {
-          // Ignore path access error
-        }
-      }
-    }
-
-    let resolvedPluginsConfigPath: string | null = null;
-    let resolvedPluginsDirPath: string | null = null;
-    let resolvedAgentsDirPath: string | null = null;
-
-    if (profile.agents && Array.isArray(profile.agents.paths)) {
-      for (const p of profile.agents.paths) {
-        try {
-          const expanded = expandHome(p);
-          if (fs.existsSync(expanded)) {
-            const stat = fs.statSync(expanded);
-            if (stat.isDirectory()) {
-              resolvedAgentsDirPath = expanded;
-              break;
-            }
-          }
-        } catch {
-          // Ignore path access error
-        }
-      }
-    }
-
-    if (profile.plugins && Array.isArray(profile.plugins.paths)) {
-      for (const p of profile.plugins.paths) {
-        try {
-          const expanded = expandHome(p);
-          if (fs.existsSync(expanded)) {
-            const stat = fs.statSync(expanded);
-            if (stat.isFile()) {
-              resolvedPluginsConfigPath = expanded;
-              break;
-            }
-          }
-        } catch {
-          // Ignore path access error
-        }
-      }
-    }
-
-    if (profile.plugins && Array.isArray(profile.plugins.dirPaths)) {
-      for (const p of profile.plugins.dirPaths) {
-        try {
-          const expanded = expandHome(p);
-          if (fs.existsSync(expanded)) {
-            const stat = fs.statSync(expanded);
-            if (stat.isDirectory()) {
-              resolvedPluginsDirPath = expanded;
-              break;
-            }
-          }
-        } catch {
-          // Ignore path access error
-        }
-      }
-    }
+    const resolvedMcpPath = findFirstExistingPath(profile.mcpConfig?.paths, "file");
+    const resolvedSkillsPath = findFirstExistingPath(profile.skills?.paths, "directory");
+    const resolvedAgentsDirPath = findFirstExistingPath(profile.agents?.paths, "directory");
+    const resolvedPluginsConfigPath = findFirstExistingPath(profile.plugins?.paths, "file");
+    const resolvedPluginsDirPath = findFirstExistingPath(profile.plugins?.dirPaths, "directory");
 
     if (
       resolvedMcpPath ||

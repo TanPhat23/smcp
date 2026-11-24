@@ -36,14 +36,16 @@ export function listCommand(options?: ListCommandOptions): void {
             )
           : {};
         const skills = agent.skillsDirPath ? scanSkills(agent.skillsDirPath) : [];
-        const plugins = agent.pluginsConfigPath
-          ? readInstalledPlugins(
-              agent.pluginsConfigPath,
-              profile?.plugins?.key,
-              profile?.plugins?.format,
-              profile?.plugins?.dirPaths
-            )
-          : [];
+        const plugins =
+          agent.pluginsConfigPath || agent.pluginsDirPath
+            ? readInstalledPlugins(
+                agent.pluginsConfigPath || "",
+                profile?.plugins?.key,
+                profile?.plugins?.format,
+                profile?.plugins?.dirPaths || (agent.pluginsDirPath ? [agent.pluginsDirPath] : undefined),
+                agent.id
+              )
+            : [];
         const agentsList = agent.agentsDirPath ? scanAgents(agent.agentsDirPath) : [];
         return {
           id: agent.id,
@@ -104,6 +106,9 @@ export function listCommand(options?: ListCommandOptions): void {
       }
       if (agent.pluginsDirPath) {
         console.log(`  ${pc.dim("Plugins Dir:")} ${pc.yellow(agent.pluginsDirPath)}`);
+      }
+      if (agent.agentsDirPath) {
+        console.log(`  ${pc.dim("Agents Dir:")} ${pc.blue(agent.agentsDirPath)}`);
       }
     }
 
@@ -170,15 +175,17 @@ export function listCommand(options?: ListCommandOptions): void {
       }
     }
 
-    if (agent.pluginsConfigPath) {
+    if (agent.pluginsConfigPath || agent.pluginsDirPath) {
       const profile = profiles[agent.id];
       const plugins = readInstalledPlugins(
-        agent.pluginsConfigPath,
+        agent.pluginsConfigPath || "",
         profile?.plugins?.key,
         profile?.plugins?.format,
-        profile?.plugins?.dirPaths
+        profile?.plugins?.dirPaths || (agent.pluginsDirPath ? [agent.pluginsDirPath] : undefined),
+        agent.id
       );
-      console.log(`  ${pc.yellow("Plugins")} (${pc.dim(agent.pluginsConfigPath)}):`);
+      const pluginSourceLabel = agent.pluginsConfigPath || agent.pluginsDirPath || "";
+      console.log(`  ${pc.yellow("Plugins")} (${pc.dim(pluginSourceLabel)}):`);
       if (plugins.length === 0) {
         console.log(`    ${pc.dim("(none)")}`);
       } else {

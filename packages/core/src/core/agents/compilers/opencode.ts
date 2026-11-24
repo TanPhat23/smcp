@@ -1,7 +1,7 @@
-import path from "node:path";
 import YAML from "yaml";
 import type { UniversalAgent } from "../../../types/index.ts";
 import { isPrototypePollutionKey } from "../../../utils/security.ts";
+import { sanitizeAgentFilename } from "./helpers.ts";
 import type { CompiledAgentFile } from "./types.ts";
 
 /**
@@ -15,11 +15,7 @@ export function compileOpenCodeAgent(agent: UniversalAgent): CompiledAgentFile {
     throw new TypeError("Agent definition must be a valid object");
   }
 
-  const rawName = (agent.name ?? "").replace(/\\/g, "/");
-  const baseNameFromPath = path.basename(rawName).trim().replace(/^\.+/, "");
-  const safeName = baseNameFromPath || "agent";
-  const baseName = safeName.endsWith(".md") ? safeName.slice(0, -3) : safeName;
-  const filename = `${baseName || "agent"}.md`;
+  const { filename } = sanitizeAgentFilename(agent.name);
 
   const frontmatter: Record<string, unknown> = {
     name: agent.name,

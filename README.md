@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun%201.3+-black.svg?logo=bun)](https://bun.sh)
 [![Node: >=18](https://img.shields.io/badge/Node->=18-green.svg?logo=node.js)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-0.4.3-brightgreen.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](package.json)
 
 > **The package manager for AI Agent Stacks.**  
 > Interactively bundle, sanitize, version, and share **Agent Skills** and **Model Context Protocol (MCP)** server configurations across AI coding environments in seconds.
@@ -61,7 +61,7 @@ Verify your installation:
 
 ```bash
 smcp --version
-# Output: 0.4.3
+# Output: 0.5.0
 ```
 
 ---
@@ -185,9 +185,16 @@ Security is the primary directive of `smcp`. The redaction engine prevents accid
 | :--- | :--- | :--- |
 | **OpenCode** | `~/.config/opencode/opencode.json`<br>`./opencode.json` | `~/.config/opencode/skills`<br>`./.opencode/skills` |
 | **Claude Code** | `~/.claude.json`<br>`./.mcp.json` | `~/.claude/skills`<br>`./.claude/skills` |
+| **Antigravity (`agy`)** | `~/.gemini/config/mcp_config.json`<br>`./.agents/mcp_config.json` | `~/.gemini/config/skills`<br>`./.agents/skills` |
 | **Claude Desktop** | `~/.config/Claude/claude_desktop_config.json`<br>`~/Library/Application Support/Claude/claude_desktop_config.json`<br>`%APPDATA%/Claude/claude_desktop_config.json` | *(MCP only)* |
 | **Cursor** | `~/.cursor/mcp.json`<br>`./.cursor/mcp.json` | `~/.cursor/skills`<br>`./.cursor/rules` |
 | **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/skills` |
+
+**Antigravity (`agy`) notes:**
+- Global scope writes to `~/.gemini/config/mcp_config.json`, `~/.gemini/config/skills`, `~/.gemini/config/plugins`, and `~/.gemini/config/agents`.
+- Project scope (`--project`) writes to `./.agents/mcp_config.json`, `./.agents/skills`, `./.agents/plugins`, and `./.agents/agents`.
+- Plugins are installed as directory bundles (ensuring `plugin.json` exists) without modifying `~/.gemini/config/config.json`.
+- `-a agy` or `-a antigravity` targets Antigravity.
 
 **Claude Code notes:**
 - Project scope (`--project`) writes only files Claude Code reads: `./.mcp.json`, `./.claude/skills`, `./.claude/settings.json` / `./.claude/settings.local.json` (plugins) and `./.claude/agents`.

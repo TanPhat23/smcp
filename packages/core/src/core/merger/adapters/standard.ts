@@ -27,8 +27,36 @@ function cleanObjectWithoutPrototype(obj: unknown): Record<string, unknown> {
   return clean;
 }
 
+function normalizeCommandAndArgs(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>
+): void {
+  if (Array.isArray(source.command)) {
+    const cmdArr = source.command.filter(
+      (c) => c !== null && c !== undefined && typeof c !== "object"
+    );
+    target.command = cmdArr.length > 0 ? String(cmdArr[0]) : "";
+    if (cmdArr.length > 1) {
+      target.args = cmdArr.slice(1).map(String);
+    }
+  } else if (Array.isArray(source.args)) {
+    target.args = source.args
+      .filter((a) => a !== null && a !== undefined && typeof a !== "object")
+      .map(String);
+  }
+}
+
+function normalizeRemoteUrl(target: Record<string, unknown>): void {
+  if (typeof target.serverUrl === "string" && target.serverUrl.trim()) {
+    if (typeof target.url !== "string" || !target.url.trim()) {
+      target.url = target.serverUrl.trim();
+    }
+    delete target.serverUrl;
+  }
+}
+
 /**
- * Standard MCP Adapter (Claude Code, Cursor, Windsurf, Claude Desktop).
+ * Standard MCP Adapter (Claude Code, Cursor, Windsurf, Claude Desktop, Antigravity).
  * Emits canonical format:
  * - command: string
  * - args: string[]
@@ -60,24 +88,12 @@ export class StandardMcpAdapter implements McpAdapter {
       ...cleanedConfig
     };
 
-    // If command was an array (e.g. from OpenCode export), normalize to command string + args array
-    if (Array.isArray(cleanedConfig.command)) {
-      const cmdArr = (cleanedConfig.command as unknown[]).filter(
-        (c) => c !== null && c !== undefined && typeof c !== "object"
-      );
-      formatted.command = cmdArr.length > 0 ? String(cmdArr[0]) : "";
-      if (cmdArr.length > 1) {
-        formatted.args = cmdArr.slice(1).map(String);
-      }
-    } else if (Array.isArray(cleanedConfig.args)) {
-      formatted.args = (cleanedConfig.args as unknown[])
-        .filter((a) => a !== null && a !== undefined && typeof a !== "object")
-        .map(String);
-    }
+    normalizeCommandAndArgs(cleanedConfig, formatted);
+    normalizeRemoteUrl(formatted);
 
     // Map OpenCode environment back to env if needed
     const envClean = sanitizeRecord(
-      cleanedConfig.env || (cleanedConfig as any).environment || baseExisting.env || (baseExisting as any).environment
+      cleanedConfig.env || cleanedConfig.environment || baseExisting.env || baseExisting.environment
     );
     if (envClean) {
       formatted.env = envClean;
@@ -107,23 +123,12 @@ export class StandardMcpAdapter implements McpAdapter {
     }
 
     const cleaned = cleanObjectWithoutPrototype(rawConfig);
-    const result: McpServerConfig = { ...cleaned };
+    const result: Record<string, unknown> = { ...cleaned };
 
-    if (Array.isArray(cleaned.command)) {
-      const cmdArr = (cleaned.command as unknown[]).filter(
-        (c) => c !== null && c !== undefined && typeof c !== "object"
-      );
-      result.command = cmdArr.length > 0 ? String(cmdArr[0]) : "";
-      if (cmdArr.length > 1) {
-        result.args = cmdArr.slice(1).map(String);
-      }
-    } else if (Array.isArray(cleaned.args)) {
-      result.args = (cleaned.args as unknown[])
-        .filter((a) => a !== null && a !== undefined && typeof a !== "object")
-        .map(String);
-    }
+    normalizeCommandAndArgs(cleaned, result);
+    normalizeRemoteUrl(result);
 
-    const envClean = sanitizeRecord(cleaned.env || (cleaned as any).environment);
+    const envClean = sanitizeRecord(cleaned.env || cleaned.environment);
     if (envClean) {
       result.env = envClean;
     }

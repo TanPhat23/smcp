@@ -33,7 +33,8 @@ export const UniversalAgentFrontmatterSchema = z
     codex: z.record(z.string(), z.unknown()).optional(),
     opencode: z.record(z.string(), z.unknown()).optional(),
     claude: z.record(z.string(), z.unknown()).optional(),
-    cursor: z.record(z.string(), z.unknown()).optional()
+    cursor: z.record(z.string(), z.unknown()).optional(),
+    agy: z.record(z.string(), z.unknown()).optional()
   })
   .passthrough();
 

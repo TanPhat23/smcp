@@ -22,7 +22,7 @@ import { hashContent } from "../packages/core/src/utils/crypto.ts";
 
 describe("Agent Profiles Registry & Default Agents", () => {
   it("provides all default built-in profiles", () => {
-    const defaultIds = ["opencode", "claude-code", "claude-desktop", "cursor", "windsurf"];
+    const defaultIds = ["opencode", "claude-code", "claude-desktop", "cursor", "windsurf", "agy"];
     for (const id of defaultIds) {
       expect(DEFAULT_AGENTS[id]).toBeDefined();
     }
@@ -86,6 +86,32 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(windsurf.mcpConfig?.key).toBe("mcpServers");
     expect(windsurf.mcpConfig?.paths).toContain("~/.codeium/windsurf/mcp_config.json");
     expect(windsurf.skills?.paths).toContain("~/.codeium/windsurf/skills");
+  });
+
+  it("validates Antigravity (agy) profile paths and keys", () => {
+    const agy = DEFAULT_AGENTS.agy;
+    expect(agy.name).toBe("Antigravity");
+    expect(agy.mcpConfig?.key).toBe("mcpServers");
+    expect(agy.mcpConfig?.paths).toEqual([
+      "~/.gemini/config/mcp_config.json",
+      "./.agents/mcp_config.json"
+    ]);
+    expect(agy.skills?.paths).toEqual([
+      "~/.gemini/config/skills",
+      "./.agents/skills",
+      "./.agent/skills"
+    ]);
+    expect(agy.plugins?.format).toBe("directory");
+    expect(agy.plugins?.dirPaths).toEqual([
+      "~/.gemini/config/plugins",
+      "./.agents/plugins",
+      "./.agent/plugins"
+    ]);
+    expect(agy.agents?.paths).toEqual([
+      "~/.gemini/config/agents",
+      "./.agents/agents",
+      "./.agent/agents"
+    ]);
   });
 
   it("returns a detached copy so mutating returned profiles does not mutate DEFAULT_AGENTS", () => {

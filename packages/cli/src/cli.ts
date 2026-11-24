@@ -50,7 +50,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.4.3")
+    .version("0.5.0")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions")
     .option(
@@ -93,7 +93,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("-R, --repo <repo>", "Target GitHub repository (e.g. owner/repo or repo-name) when provider is repo")
     .option("--branch <branch>", "Target branch when sharing to a GitHub repository (default: main)")
     .option("-o, --output <dir>", "Export to a local folder instead of GitHub Gist")
-    .option("-a, --agents <agents...>", "Filter source agents to share from (e.g. opencode, claude)")
+    .option("-a, --agents <agents...>", "Filter source agents to share from (e.g. opencode, claude, agy)")
     .option("-s, --servers <servers...>", "Specific MCP servers to share")
     .option("-k, --skills <skills...>", "Specific skills to share")
     .option("-p, --plugins <plugins...>", "Specific plugins to share")
@@ -114,7 +114,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .command("install <source>")
     .alias("add")
     .description("Install an agent pack from a Gist URL, GitHub repository, or local path")
-    .option("-a, --agents <agents...>", "Target agents to install into (e.g. opencode, claude)")
+    .option("-a, --agents <agents...>", "Target agents to install into (e.g. opencode, claude, agy)")
     .option("-f, --force", "Force installation, overwriting existing configurations without prompting")
     .option("-e, --env <vars...>", "Environment variables for installation in KEY=VALUE format")
     .option("--plugin-dir <dir>", "Directory to install local plugin scripts into")
@@ -190,7 +190,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .command("list")
     .alias("ls")
     .description("List installed skills and MCP servers across detected agents")
-    .option("-a, --agents <agents...>", "Filter agents to display (e.g. opencode, claude)")
+    .option("-a, --agents <agents...>", "Filter agents to display (e.g. opencode, claude, agy)")
     .option("-s, --settings", "Show detailed server settings, commands, arguments, and environment variables")
     .option("-v, --verbose", "Show detailed server and skill settings (alias for --settings)")
     .option("--json", "Output installed configuration in machine-readable JSON format for AI agents")
@@ -253,7 +253,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
 
   agent
     .command("install-skill")
-    .description("Install the smcp skill into detected AI agents (OpenCode, Claude Code)")
+    .description("Install the smcp skill into detected AI agents (OpenCode, Claude Code, Antigravity)")
     .option("--json", "Output installation result in JSON format")
     .action((options) => {
       agentInstallSkillCommand(options);

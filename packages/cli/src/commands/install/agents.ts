@@ -154,6 +154,156 @@ export interface WrittenAgentPaths {
   agents?: string[];
 }
 
+function filterCompatiblePlugins(
+  plugins: NonNullable<Manifest["plugins"]>,
+  agentId: string,
+  format?: "array" | "map" | "directory"
+): NonNullable<Manifest["plugins"]> {
+  return plugins.filter((pl) => {
+    if (typeof pl === "string") return true;
+    if (!pl.targetAgent) return true;
+    if (pl.targetAgent === agentId) return true;
+    if (
+      pl.targetAgent === "opencode" &&
+      (agentId === "opencode" || agentId.includes("opencode") || format === "array")
+    ) {
+      return true;
+    }
+    if (
+      pl.targetAgent === "claude-code" &&
+      (agentId === "claude-code" || agentId.startsWith("claude") || agentId.includes("claude") || format === "map")
+    ) {
+      return true;
+    }
+    if (
+      (pl.targetAgent === "agy" || pl.targetAgent === "antigravity") &&
+      (agentId === "agy" || format === "directory")
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function isScriptFilePluginName(name: string): boolean {
+  return (
+    name.endsWith(".ts") ||
+    name.endsWith(".js") ||
+    name.endsWith(".mjs") ||
+    name.endsWith(".cjs") ||
+    (name.includes(".ts") && (name.startsWith("./") || name.startsWith("../") || name.startsWith("/")))
+  );
+}
+
+function hasDirectoryPluginManifest(files: Record<string, string>): boolean {
+  return (
+    Object.hasOwn(files, "plugin.json") ||
+    Object.hasOwn(files, ".antigravity-plugin/plugin.json") ||
+    Object.hasOwn(files, ".gemini-plugin/plugin.json") ||
+    Object.hasOwn(files, "gemini-extension.json")
+  );
+}
+
+function installPluginsForAgent(
+  agentId: string,
+  profile: AgentProfile,
+  manifestPlugins: NonNullable<Manifest["plugins"]>,
+  rawFiles: Record<string, string> | undefined,
+  localDir: string | undefined,
+  customPluginDir: string | undefined,
+  scope: "global" | "project" | undefined,
+  written: WrittenAgentPaths
+): boolean {
+  const pluginsConfig = profile.plugins;
+  if (!pluginsConfig) return false;
+
+  const format = pluginsConfig.format || "array";
+  const compatiblePlugins = filterCompatiblePlugins(manifestPlugins, agentId, format);
+  if (compatiblePlugins.length === 0) return false;
+
+  if (format === "directory") {
+    const destPluginDir =
+      customPluginDir ||
+      (pluginsConfig.dirPaths ? resolveActiveAgentPath(pluginsConfig.dirPaths, { scope }) : undefined);
+    if (!destPluginDir) return false;
+
+    const installedPluginNames: string[] = [];
+    for (const pl of compatiblePlugins) {
+      const pName = typeof pl === "string" ? pl : pl.name;
+      if (isScriptFilePluginName(pName)) continue;
+
+      const files = extractPluginFiles(pl, rawFiles, localDir);
+      if (Object.keys(files).length === 0) continue;
+
+      const filesToInstall = hasDirectoryPluginManifest(files)
+        ? files
+        : {
+            "plugin.json": JSON.stringify({ name: pName }, null, 2) + "\n",
+            ...files
+          };
+
+      installPluginFiles(destPluginDir, pName, filesToInstall);
+      installedPluginNames.push(pName);
+    }
+
+    if (installedPluginNames.length === 0) return false;
+    written.pluginDir = destPluginDir;
+    written.plugins = installedPluginNames;
+    return true;
+  }
+
+  if (!pluginsConfig.paths || pluginsConfig.paths.length === 0) return false;
+  const primaryPluginsConfig = resolveActiveAgentPath(pluginsConfig.paths, { scope });
+  if (!primaryPluginsConfig) return false;
+
+  const isOpenCode =
+    agentId === "opencode" ||
+    agentId.includes("opencode") ||
+    (format === "array" && /opencode\.jsonc?$/i.test(primaryPluginsConfig));
+
+  const destPluginDir =
+    customPluginDir ||
+    (pluginsConfig.dirPaths ? resolveActiveAgentPath(pluginsConfig.dirPaths, { scope }) : undefined) ||
+    (isOpenCode ? "./.opencode/plugins" : "./plugin");
+
+  const installedPluginNames: string[] = [];
+  for (const pl of compatiblePlugins) {
+    const files = extractPluginFiles(pl, rawFiles, localDir);
+    if (Object.keys(files).length > 0) {
+      const pName = typeof pl === "string" ? pl : pl.name;
+      installPluginFiles(destPluginDir, pName, files);
+      if (isOpenCode) {
+        ensurePluginDependenciesResolvable(destPluginDir, files);
+      }
+      installedPluginNames.push(pName);
+    }
+  }
+
+  if (installedPluginNames.length > 0) {
+    written.pluginDir = destPluginDir;
+    written.plugins = installedPluginNames;
+  }
+
+  // For OpenCode: v2.0.20 rejects .ts file paths in plugins array ("configured plugin path must be a directory")
+  // and auto-discovers from .opencode/plugins/*.ts.
+  // Only pass package specifiers (npm packages) to mergePluginsIntoFile.
+  const pluginsForConfig = isOpenCode
+    ? compatiblePlugins.filter((pl) => {
+        const name = typeof pl === "string" ? pl : pl.name;
+        return !isScriptFilePluginName(name);
+      })
+    : compatiblePlugins;
+
+  mergePluginsIntoFile(
+    primaryPluginsConfig,
+    pluginsForConfig,
+    pluginsConfig.key || (isOpenCode ? "plugins" : "plugin"),
+    format
+  );
+
+  return true;
+}
+
 export function installPackIntoAgents(
   manifest: Manifest,
   targetAgentIds: string[],
@@ -191,9 +341,7 @@ export function installPackIntoAgents(
     // Install MCP servers
     let agentScope: "global" | "project" = scope || "global";
     if (
-      profile.mcpConfig &&
-      profile.mcpConfig.paths &&
-      profile.mcpConfig.paths.length > 0 &&
+      profile.mcpConfig?.paths?.length &&
       Object.keys(transformedServers).length > 0
     ) {
       const primaryPath = resolveActiveAgentPath(profile.mcpConfig.paths, { scope });
@@ -213,11 +361,8 @@ export function installPackIntoAgents(
 
     // Install Skills
     if (
-      profile.skills &&
-      profile.skills.paths &&
-      profile.skills.paths.length > 0 &&
-      manifest.skills &&
-      manifest.skills.length > 0
+      profile.skills?.paths?.length &&
+      manifest.skills?.length
     ) {
       const primarySkillsDir = resolveActiveAgentPath(profile.skills.paths, { scope });
       if (primarySkillsDir) {
@@ -234,99 +379,27 @@ export function installPackIntoAgents(
     }
 
     // Install Plugins
-    if (
-      profile.plugins &&
-      profile.plugins.paths &&
-      profile.plugins.paths.length > 0 &&
-      manifest.plugins &&
-      manifest.plugins.length > 0
-    ) {
-      const primaryPluginsConfig = resolveActiveAgentPath(profile.plugins.paths, { scope });
-      if (primaryPluginsConfig) {
-        const compatiblePlugins = manifest.plugins.filter((pl) => {
-          if (typeof pl === "string") return true;
-          if (!pl.targetAgent) return true;
-          if (pl.targetAgent === agentId) return true;
-          if (
-            pl.targetAgent === "opencode" &&
-            (agentId === "opencode" || agentId.includes("opencode") || profile.plugins?.format === "array")
-          ) {
-            return true;
-          }
-          if (
-            pl.targetAgent === "claude-code" &&
-            (agentId === "claude-code" || agentId.startsWith("claude") || agentId.includes("claude") || profile.plugins?.format === "map")
-          ) {
-            return true;
-          }
-          return false;
-        });
-
-        if (compatiblePlugins.length > 0) {
-          const isOpenCode =
-            agentId === "opencode" ||
-            agentId.includes("opencode") ||
-            (profile.plugins.format === "array" && /opencode\.jsonc?$/i.test(primaryPluginsConfig));
-
-          // Extract any local plugin files if present
-          const destPluginDir =
-            customPluginDir ||
-            (profile.plugins.dirPaths ? resolveActiveAgentPath(profile.plugins.dirPaths, { scope }) : undefined) ||
-            (isOpenCode ? "./.opencode/plugins" : "./plugin");
-
-          const installedPluginNames: string[] = [];
-          for (const pl of compatiblePlugins) {
-            const files = extractPluginFiles(pl, rawFiles, localDir);
-            if (Object.keys(files).length > 0) {
-              const pName = typeof pl === "string" ? pl : pl.name;
-              installPluginFiles(destPluginDir, pName, files);
-              if (isOpenCode) {
-                ensurePluginDependenciesResolvable(destPluginDir, files);
-              }
-              installedPluginNames.push(pName);
-            }
-          }
-
-          if (installedPluginNames.length > 0) {
-            writtenPaths[agentId].pluginDir = destPluginDir;
-            writtenPaths[agentId].plugins = installedPluginNames;
-          }
-
-          // For OpenCode: v2.0.20 rejects .ts file paths in plugins array ("configured plugin path must be a directory")
-          // and auto-discovers from .opencode/plugins/*.ts.
-          // Only pass package specifiers (npm packages) to mergePluginsIntoFile.
-          const pluginsForConfig = isOpenCode
-            ? compatiblePlugins.filter((pl) => {
-                const name = typeof pl === "string" ? pl : pl.name;
-                const isFilePath =
-                  name.endsWith(".ts") ||
-                  name.endsWith(".js") ||
-                  name.endsWith(".mjs") ||
-                  name.endsWith(".cjs") ||
-                  (name.includes(".ts") && (name.startsWith("./") || name.startsWith("../") || name.startsWith("/")));
-                return !isFilePath;
-              })
-            : compatiblePlugins;
-
-          mergePluginsIntoFile(
-            primaryPluginsConfig,
-            pluginsForConfig,
-            profile.plugins.key || (isOpenCode ? "plugins" : "plugin"),
-            profile.plugins.format || "array"
-          );
-
-          installedPlugins.push(agentId);
-        }
+    if (manifest.plugins?.length) {
+      if (
+        installPluginsForAgent(
+          agentId,
+          profile,
+          manifest.plugins,
+          rawFiles,
+          localDir,
+          customPluginDir,
+          scope,
+          writtenPaths[agentId]
+        )
+      ) {
+        installedPlugins.push(agentId);
       }
     }
 
     // Install Agents
     if (
-      profile.agents &&
-      profile.agents.paths &&
-      profile.agents.paths.length > 0 &&
-      manifest.agents &&
-      manifest.agents.length > 0
+      profile.agents?.paths?.length &&
+      manifest.agents?.length
     ) {
       const primaryAgentsDir = resolveActiveAgentPath(profile.agents.paths, { scope });
       if (primaryAgentsDir) {

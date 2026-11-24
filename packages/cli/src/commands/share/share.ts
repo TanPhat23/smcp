@@ -95,13 +95,14 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   // 2b. Collect all available plugins
   const availablePlugins: PluginEntry[] = [];
   for (const agent of agents) {
-    if (agent.pluginsConfigPath) {
+    if (agent.pluginsConfigPath || agent.pluginsDirPath) {
       const profile = profiles[agent.id];
       const plugins = readInstalledPlugins(
-        agent.pluginsConfigPath,
+        agent.pluginsConfigPath || "",
         profile?.plugins?.key,
         profile?.plugins?.format,
-        profile?.plugins?.dirPaths
+        profile?.plugins?.dirPaths || (agent.pluginsDirPath ? [agent.pluginsDirPath] : undefined),
+        agent.id
       );
       for (const pl of plugins) {
         const pName = typeof pl === "string" ? pl : pl.name;

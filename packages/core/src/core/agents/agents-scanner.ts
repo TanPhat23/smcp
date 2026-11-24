@@ -9,6 +9,31 @@ export interface ScannedAgentEntry extends UniversalAgent {
   rawContent: string;
 }
 
+function readAgentFileEntry(fullPath: string, fallbackName: string): ScannedAgentEntry | null {
+  try {
+    const rawContent = fs.readFileSync(fullPath, "utf8");
+    try {
+      const parsed = parseAgentMarkdown(rawContent, fullPath);
+      return {
+        ...parsed,
+        path: fullPath,
+        rawContent
+      };
+    } catch {
+      return {
+        name: fallbackName,
+        description: `Custom agent ${fallbackName}`,
+        mode: "subagent",
+        prompt: rawContent,
+        path: fullPath,
+        rawContent
+      };
+    }
+  } catch {
+    return null;
+  }
+}
+
 export function scanAgents(agentsDirPath: string): ScannedAgentEntry[] {
   if (!agentsDirPath || typeof agentsDirPath !== "string") return [];
   const resolved = path.resolve(expandHome(agentsDirPath));
@@ -29,30 +54,21 @@ export function scanAgents(agentsDirPath: string): ScannedAgentEntry[] {
 
   const agents: ScannedAgentEntry[] = [];
   for (const item of items) {
-    if (!item.isFile() || !item.name.toLowerCase().endsWith(".md")) continue;
+    if (item.name.startsWith(".")) continue;
     const fullPath = path.join(resolved, item.name);
-    try {
-      const rawContent = fs.readFileSync(fullPath, "utf8");
+    if (item.isFile() && item.name.toLowerCase().endsWith(".md")) {
+      const entry = readAgentFileEntry(fullPath, item.name.replace(/\.md$/i, ""));
+      if (entry) agents.push(entry);
+    } else if (item.isDirectory()) {
+      const nestedAgentPath = path.join(fullPath, "agent.md");
       try {
-        const parsed = parseAgentMarkdown(rawContent, fullPath);
-        agents.push({
-          ...parsed,
-          path: fullPath,
-          rawContent
-        });
+        if (fs.existsSync(nestedAgentPath) && fs.statSync(nestedAgentPath).isFile()) {
+          const entry = readAgentFileEntry(nestedAgentPath, item.name);
+          if (entry) agents.push(entry);
+        }
       } catch {
-        const baseName = item.name.replace(/\.md$/i, "");
-        agents.push({
-          name: baseName,
-          description: `Custom agent ${baseName}`,
-          mode: "subagent",
-          prompt: rawContent,
-          path: fullPath,
-          rawContent
-        });
+        // Ignore unreadable nested agent directory
       }
-    } catch {
-      // Skip unreadable files
     }
   }
 

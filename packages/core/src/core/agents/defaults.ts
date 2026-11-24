@@ -122,5 +122,40 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
     },
     plugins: null,
     agents: null
+  },
+  agy: {
+    name: "Antigravity",
+    mcpConfig: {
+      paths: [
+        "~/.gemini/config/mcp_config.json",
+        "./.agents/mcp_config.json"
+      ],
+      key: "mcpServers"
+    },
+    skills: {
+      paths: [
+        "~/.gemini/config/skills",
+        "./.agents/skills",
+        "./.agent/skills"
+      ]
+    },
+    plugins: {
+      paths: ["~/.gemini/config/config.json"],
+      key: "plugins",
+      format: "directory",
+      dirPaths: [
+        "~/.gemini/config/plugins",
+        "./.agents/plugins",
+        "./.agent/plugins"
+      ]
+    },
+    agents: {
+      paths: [
+        "~/.gemini/config/agents",
+        "./.agents/agents",
+        "./.agent/agents"
+      ],
+      format: "markdown"
+    }
   }
 });

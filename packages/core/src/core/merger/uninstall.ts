@@ -17,6 +17,41 @@ export interface UninstallResult {
   removedAgents: string[];
 }
 
+function collectCandidatePaths(paths: readonly string[]): string[] {
+  const candidates = new Set<string>();
+  for (const scope of ["global", "project"] as const) {
+    const resolved = resolveActiveAgentPath([...paths], { scope });
+    if (resolved) candidates.add(resolved);
+  }
+  for (const p of paths) {
+    candidates.add(isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p));
+  }
+  return Array.from(candidates);
+}
+
+function isPlainRecord(val: unknown): val is Record<string, unknown> {
+  return Boolean(val && typeof val === "object" && !Array.isArray(val));
+}
+
+function removeSafelyInside(
+  baseDir: string,
+  entryName: string,
+  recursive: boolean
+): boolean {
+  if (!fs.existsSync(baseDir)) return false;
+  try {
+    const canonicalBase = fs.realpathSync(baseDir);
+    const targetPath = path.resolve(baseDir, entryName);
+    if (!fs.existsSync(targetPath)) return false;
+    const realTarget = fs.realpathSync(targetPath);
+    if (!isStrictlyInside(canonicalBase, realTarget)) return false;
+    fs.rmSync(realTarget, { recursive, force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function uninstallPackFromAgents(
   record: InstalledPackRecord,
   profiles?: Record<string, AgentProfile>
@@ -35,38 +70,26 @@ export function uninstallPackFromAgents(
 
     // 1. Remove MCP servers from agent config file
     if (
-      profile.mcpConfig &&
-      profile.mcpConfig.paths &&
-      profile.mcpConfig.paths.length > 0 &&
-      record.installedMcp &&
-      record.installedMcp.length > 0
+      profile.mcpConfig?.paths?.length &&
+      record.installedMcp?.length
     ) {
-      // Install may have written to any scope, so check every candidate file.
-      const candidatePaths = new Set<string>();
-      for (const scope of ["global", "project"] as const) {
-        const resolved = resolveActiveAgentPath(profile.mcpConfig.paths, { scope });
-        if (resolved) candidatePaths.add(resolved);
-      }
-      for (const p of profile.mcpConfig.paths) {
-        candidatePaths.add(isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p));
-      }
       const targetKey = profile.mcpConfig.key || "mcpServers";
 
-      for (const activePath of candidatePaths) {
+      for (const activePath of collectCandidatePaths(profile.mcpConfig.paths)) {
         if (!fs.existsSync(activePath)) continue;
         try {
           const writePath = fs.realpathSync(activePath);
           const raw = fs.readFileSync(writePath, "utf8");
-          const config = JSON.parse(stripJsonComments(raw));
-          if (!config || typeof config !== "object" || Array.isArray(config)) continue;
+          const config: unknown = JSON.parse(stripJsonComments(raw));
+          if (!isPlainRecord(config)) continue;
 
           let modified = false;
           const removeFrom = (map: unknown) => {
-            if (!map || typeof map !== "object" || Array.isArray(map)) return;
+            if (!isPlainRecord(map)) return;
             for (const sName of record.installedMcp) {
               if (isPrototypePollutionKey(sName)) continue;
               if (Object.hasOwn(map, sName)) {
-                delete (map as Record<string, unknown>)[sName];
+                delete map[sName];
                 modified = true;
                 if (!removedMcp.includes(sName)) removedMcp.push(sName);
               }
@@ -74,16 +97,19 @@ export function uninstallPackFromAgents(
           };
 
           // OpenCode V2 format (mcp.servers)
-          if (config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)) {
+          if (isPlainRecord(config.mcp)) {
             removeFrom(config.mcp.servers);
           }
           // Standard format (mcpServers or profile.mcpConfig.key)
           removeFrom(config[targetKey]);
           // Claude Code per-project servers inside ~/.claude.json
-          if (config.projects && typeof config.projects === "object" && !Array.isArray(config.projects)) {
+          if (isPlainRecord(config.projects)) {
             for (const dir of new Set([process.cwd(), os.homedir()])) {
               if (Object.hasOwn(config.projects, dir)) {
-                removeFrom(config.projects[dir]?.mcpServers);
+                const projEntry = config.projects[dir];
+                if (isPlainRecord(projEntry)) {
+                  removeFrom(projEntry.mcpServers);
+                }
               }
             }
           }
@@ -99,28 +125,14 @@ export function uninstallPackFromAgents(
 
     // 2. Remove skills directories
     if (
-      profile.skills &&
-      profile.skills.paths &&
-      profile.skills.paths.length > 0 &&
-      record.installedSkills &&
-      record.installedSkills.length > 0
+      profile.skills?.paths?.length &&
+      record.installedSkills?.length
     ) {
-      const activeSkillsDir = resolveActiveAgentPath(profile.skills.paths);
-      if (activeSkillsDir && fs.existsSync(activeSkillsDir)) {
-        const canonicalBase = fs.realpathSync(activeSkillsDir);
+      for (const candidateSkillsDir of collectCandidatePaths(profile.skills.paths)) {
         for (const skillName of record.installedSkills) {
           if (!skillName || isPrototypePollutionKey(skillName)) continue;
-          const targetDir = path.resolve(activeSkillsDir, skillName);
-          if (fs.existsSync(targetDir)) {
-            try {
-              const realTarget = fs.realpathSync(targetDir);
-              if (isStrictlyInside(canonicalBase, realTarget)) {
-                fs.rmSync(realTarget, { recursive: true, force: true });
-                if (!removedSkills.includes(skillName)) removedSkills.push(skillName);
-              }
-            } catch {
-              // Ignore removal failure
-            }
+          if (removeSafelyInside(candidateSkillsDir, skillName, true)) {
+            if (!removedSkills.includes(skillName)) removedSkills.push(skillName);
           }
         }
       }
@@ -130,9 +142,8 @@ export function uninstallPackFromAgents(
     if (
       profile.plugins &&
       profile.plugins.format === "map" &&
-      profile.plugins.paths &&
-      record.installedPlugins &&
-      record.installedPlugins.length > 0
+      profile.plugins.paths?.length &&
+      record.installedPlugins?.length
     ) {
       const mapKey = profile.plugins.key || "enabledPlugins";
       for (const p of profile.plugins.paths) {
@@ -140,9 +151,10 @@ export function uninstallPackFromAgents(
         if (!fs.existsSync(file)) continue;
         try {
           const writePath = fs.realpathSync(file);
-          const config = JSON.parse(stripJsonComments(fs.readFileSync(writePath, "utf8")));
-          const map = config?.[mapKey];
-          if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+          const config: unknown = JSON.parse(stripJsonComments(fs.readFileSync(writePath, "utf8")));
+          if (!isPlainRecord(config)) continue;
+          const map = config[mapKey];
+          if (!isPlainRecord(map)) continue;
           let modified = false;
           for (const name of record.installedPlugins) {
             if (isPrototypePollutionKey(name)) continue;
@@ -159,30 +171,16 @@ export function uninstallPackFromAgents(
       }
     }
 
-    // 3. Remove plugin files
+    // 3b. Remove plugin files or directories
     if (
-      profile.plugins &&
-      profile.plugins.dirPaths &&
-      profile.plugins.dirPaths.length > 0 &&
-      record.installedPlugins &&
-      record.installedPlugins.length > 0
+      profile.plugins?.dirPaths?.length &&
+      record.installedPlugins?.length
     ) {
-      const activePluginsDir = resolveActiveAgentPath(profile.plugins.dirPaths);
-      if (activePluginsDir && fs.existsSync(activePluginsDir)) {
-        const canonicalBase = fs.realpathSync(activePluginsDir);
+      for (const candidatePluginsDir of collectCandidatePaths(profile.plugins.dirPaths)) {
         for (const pluginName of record.installedPlugins) {
           if (!pluginName || isPrototypePollutionKey(pluginName)) continue;
-          const targetFile = path.resolve(activePluginsDir, pluginName);
-          if (fs.existsSync(targetFile)) {
-            try {
-              const realTarget = fs.realpathSync(targetFile);
-              if (isStrictlyInside(canonicalBase, realTarget)) {
-                fs.rmSync(realTarget, { force: true });
-                if (!removedPlugins.includes(pluginName)) removedPlugins.push(pluginName);
-              }
-            } catch {
-              // Ignore removal failure
-            }
+          if (removeSafelyInside(candidatePluginsDir, pluginName, true)) {
+            if (!removedPlugins.includes(pluginName)) removedPlugins.push(pluginName);
           }
         }
       }
@@ -190,42 +188,18 @@ export function uninstallPackFromAgents(
 
     // 4. Remove agent files
     if (
-      profile.agents &&
-      profile.agents.paths &&
-      profile.agents.paths.length > 0 &&
-      record.installedAgents &&
-      record.installedAgents.length > 0
+      profile.agents?.paths?.length &&
+      record.installedAgents?.length
     ) {
-      for (const p of profile.agents.paths) {
-        const candidateDir = isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p);
-        if (fs.existsSync(candidateDir)) {
-          try {
-            const canonicalBase = fs.realpathSync(candidateDir);
-            for (const agentName of record.installedAgents) {
-              if (!agentName || isPrototypePollutionKey(agentName)) continue;
-              const fileCandidates = [
-                `${agentName}.md`,
-                agentName
-              ];
-              for (const fName of fileCandidates) {
-                const targetFile = path.resolve(candidateDir, fName);
-                if (fs.existsSync(targetFile)) {
-                  try {
-                    const realTarget = fs.realpathSync(targetFile);
-                    if (isStrictlyInside(canonicalBase, realTarget)) {
-                      fs.rmSync(realTarget, { force: true });
-                      if (!removedAgents.includes(agentName)) {
-                        removedAgents.push(agentName);
-                      }
-                    }
-                  } catch {
-                    // Ignore removal failure
-                  }
-                }
+      for (const candidateDir of collectCandidatePaths(profile.agents.paths)) {
+        for (const agentName of record.installedAgents) {
+          if (!agentName || isPrototypePollutionKey(agentName)) continue;
+          for (const fName of [`${agentName}.md`, agentName]) {
+            if (removeSafelyInside(candidateDir, fName, false)) {
+              if (!removedAgents.includes(agentName)) {
+                removedAgents.push(agentName);
               }
             }
-          } catch {
-            // Ignore dir realpath failure
           }
         }
       }

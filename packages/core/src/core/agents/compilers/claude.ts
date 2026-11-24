@@ -1,7 +1,7 @@
-import path from "node:path";
 import YAML from "yaml";
 import type { UniversalAgent } from "../../../types/index.ts";
 import { isPrototypePollutionKey } from "../../../utils/security.ts";
+import { extractAllowTools, sanitizeAgentFilename } from "./helpers.ts";
 import type { CompiledAgentFile } from "./types.ts";
 
 /** Keys that only make sense for the slash-command flavour and must not leak into a subagent. */
@@ -20,25 +20,15 @@ export function compileClaudeAgent(agent: UniversalAgent): CompiledAgentFile {
     throw new TypeError("Agent definition must be a valid object");
   }
 
-  // Sanitize path traversal characters across both POSIX and Windows separators
-  const rawName = typeof agent.name === "string" ? agent.name : "";
-  const stripName = (s: string) => path.basename(s.replace(/\\/g, "/")).trim().replace(/^\.+/, "");
-  const base = stripName(rawName);
-  const stem = (base.endsWith(".md") ? base.slice(0, -3) : base) || "agent";
-  const filename = `${stem}.md`;
+  const { stem, filename } = sanitizeAgentFilename(agent.name);
 
   const frontmatter: Record<string, unknown> = {
     name: stem,
     description: agent.description
   };
 
-  let tools: string[] | undefined;
-  if (Array.isArray(agent.tools)) {
-    tools = agent.tools;
-  } else if (agent.tools && Array.isArray(agent.tools.allow) && agent.tools.allow.length > 0) {
-    tools = agent.tools.allow;
-  }
-  if (tools && tools.length > 0) {
+  const tools = extractAllowTools(agent.tools);
+  if (tools) {
     frontmatter.tools = tools.join(", ");
   }
 

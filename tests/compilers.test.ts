@@ -150,6 +150,52 @@ describe("Agent Compilers (Minimal: OpenCode & Claude Code)", () => {
     expect(count).toBe(1);
   });
 
+  it("compiles for Antigravity (agy) as a custom subagent with YAML array tools and overrides", () => {
+    const res = compileAgentForHarness(
+      {
+        ...sampleAgent,
+        model: "pro",
+        tools: ["view_file", "grep_search"],
+        agy: {
+          commandExecutionPolicy: "sandbox",
+          model: "flash"
+        }
+      },
+      "agy"
+    );
+    expect(res.filename).toBe("reviewer.md");
+    expect(res.content).toContain("name: reviewer");
+    expect(res.content).toContain("description: Adversarial code reviewer");
+    expect(res.content).toContain("- view_file");
+    expect(res.content).toContain("- grep_search");
+    expect(res.content).toContain("model: flash");
+    expect(res.content).toContain("commandExecutionPolicy: sandbox");
+    expect(res.content).toContain("subagent: true");
+    expect(res.content).toContain("mainAgent: false");
+    expect(res.content).toContain("You are an adversarial reviewer.");
+  });
+
+  it("supports 'antigravity' alias and skips prototype pollution keys in agy overrides", () => {
+    const agentWithPollution: UniversalAgent = {
+      name: "safe-agy",
+      description: "Agy pollution test",
+      mode: "all",
+      skills: [],
+      agy: JSON.parse(
+        '{"__proto__": "polluted", "constructor": "bad", "prototype": "bad", "commandExecutionPolicy": "auto"}'
+      ),
+      prompt: "Agy prompt"
+    };
+    const res = compileAgentForHarness(agentWithPollution, "antigravity");
+    expect(res.filename).toBe("safe-agy.md");
+    expect(res.content).not.toContain("__proto__");
+    expect(res.content).not.toContain("constructor");
+    expect(res.content).not.toContain("prototype");
+    expect(res.content).toContain("commandExecutionPolicy: auto");
+    expect(res.content).toContain("mainAgent: true");
+    expect(res.content).toContain("subagent: true");
+  });
+
   it("rejects claude-desktop as unsupported harness", () => {
     expect(() => compileAgentForHarness(sampleAgent, "claude-desktop")).toThrow(
       /unsupported harness.*claude-desktop/i

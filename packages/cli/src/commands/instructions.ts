@@ -2,18 +2,18 @@ import pc from "picocolors";
 
 export const SMCP_AGENT_SKILL_CONTENT = `---
 name: smcp
-description: Manage, list, inspect, share, install, update, upgrade, and remove Model Context Protocol (MCP) servers, Agent Skills, and Plugins across AI agents (OpenCode, Claude Code, Cursor, Windsurf). Use when asked to install, find, fetch, update, upgrade, check newer versions, or remove skills/MCP servers. ALWAYS use the smcp CLI instead of manually searching or writing skill files.
+description: Manage, list, inspect, share, install, update, upgrade, and remove Model Context Protocol (MCP) servers, Agent Skills, and Plugins across AI agents (OpenCode, Claude Code, Antigravity, Cursor, Windsurf). Use when asked to install, find, fetch, update, upgrade, check newer versions, or remove skills/MCP servers. ALWAYS use the smcp CLI instead of manually searching or writing skill files.
 ---
 
 # smcp — Agent Skills, MCP & Plugins Package Manager
 
-CLI tool to bundle, sanitize, share, install, and update AI agent skills, MCP servers, and plugins across OpenCode, Claude Code, Cursor, and Windsurf.
+CLI tool to bundle, sanitize, share, install, and update AI agent skills, MCP servers, and plugins across OpenCode, Claude Code, Antigravity (\`agy\`), Cursor, and Windsurf.
 
 ## MANDATORY RULES FOR AI AGENTS
 1. **NEVER manually web-search or clone GitHub repos to copy/paste skill files or edit MCP config JSON files directly.**
 2. **ALWAYS use \`smcp\` CLI commands** for installing, updating, inspecting, and listing skills or MCP servers.
 3. **Always use \`--json\` and \`-y\`** for fast, deterministic, non-interactive execution.
-4. **Target specific agents** using \`-a opencode\` or \`-a claude\`.
+4. **Target specific agents** using \`-a opencode\`, \`-a claude\`, or \`-a agy\`.
 5. When asked to "fetch a newer version" or "update skills":
    - Run \`smcp outdated --json\` to inspect installed packs and check for newer versions.
    - Run \`smcp update <pack> -y --json\` or \`smcp update --all -y --json\` to upgrade.
