@@ -54,6 +54,22 @@ describe("credential scoping in pack loading", () => {
   });
 });
 
+describe("HTTP error statuses", () => {
+  it("rejects non-2xx responses by default instead of resolving them", async () => {
+    const { createGitHubAxios } = await import("../packages/core/src/core/git-providers/github/client.ts");
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ message: "Bad credentials" }, { status: 401 })
+    });
+    try {
+      const client = createGitHubAxios("x", { baseURL: `http://localhost:${server.port}` });
+      await expect(client.post("/gists", {})).rejects.toThrow(/401/);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Gist response validation", () => {
   const html = "<html><body>Sign in to continue</body></html>";
   const clientReturning = (data: unknown): any => ({

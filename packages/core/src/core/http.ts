@@ -103,12 +103,14 @@ export function getOrCreateAxiosInstance(options?: HttpClientOptions): AxiosInst
     return cached;
   }
 
+  // Do not pass validateStatus: undefined — axios treats an explicit undefined as "accept every
+  // status", so 401/404/500 would resolve as successes instead of throwing.
   const instance = axios.create({
     baseURL,
     timeout,
     adapter,
     headers,
-    validateStatus
+    ...(validateStatus ? { validateStatus } : {})
   });
 
   axiosInstanceCache.set(key, instance);

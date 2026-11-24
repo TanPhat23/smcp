@@ -300,13 +300,33 @@ describe("GitLab Git Provider", () => {
       }
     } as unknown as AxiosInstance;
 
-    // Use provider.publishSnippet
-    const provider = new GitLabGitProvider();
-    const res = await (provider as any).publishSnippet({
-      title: "published-pack",
-      isPublic: true,
-      files: { "smcp.json": "{}" }
-    });
+    // Use provider.publishSnippet through a stubbed HTTP adapter (no live network)
+    const { setDefaultHttpAdapter } = await import("../packages/core/src/core/http.ts");
+    setDefaultHttpAdapter((async (config: any) => {
+      const body = JSON.parse(config.data);
+      expect(config.url).toBe("/snippets");
+      expect(body.title).toBe("published-pack");
+      expect(body.visibility).toBe("public");
+      expect(body.files).toEqual([{ file_path: "smcp.json", content: "{}" }]);
+      return {
+        data: { id: 998877, web_url: "https://gitlab.com/-/snippets/998877" },
+        status: 201,
+        statusText: "Created",
+        headers: {},
+        config
+      };
+    }) as any);
+    try {
+      const provider = new GitLabGitProvider();
+      const res = await (provider as any).publishSnippet({
+        title: "published-pack",
+        isPublic: true,
+        files: { "smcp.json": "{}" }
+      });
+      expect(res).toEqual({ snippetId: "998877", htmlUrl: "https://gitlab.com/-/snippets/998877" });
+    } finally {
+      setDefaultHttpAdapter(undefined);
+    }
 
     // Also test direct client createGitLabAxios auth headers
     const ax = createGitLabAxios("glpat-secret-token");

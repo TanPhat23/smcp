@@ -147,9 +147,8 @@ describe("Gitea / Forgejo Git Provider", () => {
     expect(userRes.full_name).toBe("Codeberg Dev");
     expect(userRes.id).toBe(4567);
 
+    // (provider.verifyUser performs a live request, so only its shape is checked here)
     const provider = new GiteaGitProvider();
-    const verifiedUser = await provider.verifyUser("fake-token");
-    // Should return AuthUser structure with verified fields
     expect(typeof provider.verifyUser).toBe("function");
   });
 
