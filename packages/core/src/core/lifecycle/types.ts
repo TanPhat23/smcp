@@ -62,7 +62,7 @@ export interface HookOptions {
   priority?: number;
 }
 
-export type HookFn<T = any> = (context: T) => Promise<void> | void;
+export type HookFn<T = never> = (context: T) => Promise<void> | void;
 
 export interface LifecycleEventMap {
   beforeShare: BeforeShareContext;

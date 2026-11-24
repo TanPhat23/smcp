@@ -1,6 +1,7 @@
 import { isAxiosError, type AxiosInstance } from "axios";
 import { ManifestSchema } from "../../../types/index.ts";
 import { createGitLabAxios, formatGitLabApiError } from "./client.ts";
+import { fetchRelevantRepoBlobs } from "../repo-utils.ts";
 import type {
   GitRepoRef,
   RepoPackResult,
@@ -216,45 +217,8 @@ export async function fetchGitLabRepoPack(
     const prefix = subpath ? `${subpath}/` : "";
     const blobItems = tree.filter((item) => item.type === "blob" && item.path !== manifestPath);
 
-    const relevantBlobs = blobItems.filter((item) => {
-      if (prefix && !item.path.startsWith(prefix)) {
-        return false;
-      }
-      const rel = prefix ? item.path.slice(prefix.length) : item.path;
-      return (
-        rel.startsWith("skills/") ||
-        rel.startsWith("plugins/") ||
-        rel.endsWith(".md") ||
-        rel.endsWith(".json")
-      );
-    });
-
-    await Promise.all(
-      relevantBlobs.map(async (blob) => {
-        try {
-          const content = await fetchFileContent(blob.path);
-          const relPath = prefix ? blob.path.slice(prefix.length) : blob.path;
-          rawFiles[relPath] = content;
-
-          if (relPath.startsWith("skills/")) {
-            const parts = relPath.split("/");
-            if (parts.length >= 3) {
-              const skillName = parts[1];
-              const filePart = parts.slice(2).join("_");
-              rawFiles[`skills_${skillName}_${filePart}`] = content;
-            }
-          } else if (relPath.startsWith("plugins/")) {
-            const parts = relPath.split("/");
-            if (parts.length >= 3) {
-              const pluginName = parts[1];
-              const filePart = parts.slice(2).join("_");
-              rawFiles[`plugins_${pluginName}_${filePart}`] = content;
-            }
-          }
-        } catch {
-          // Ignore non-fatal auxiliary file errors
-        }
-      })
+    await fetchRelevantRepoBlobs(blobItems, manifest, prefix, rawFiles, (blob) =>
+      fetchFileContent(blob.path)
     );
 
     return {

@@ -57,15 +57,23 @@ export function parseGistId(gistIdOrUrl: string): string {
   return id;
 }
 
-export function extractEtag(headers: unknown): string | undefined {
+function extractHeaderValue(headers: unknown, headerName: string): string | undefined {
   if (!headers || typeof headers !== "object") return undefined;
-  const h = headers as Record<string, unknown>;
-  const etagVal =
-    (typeof (h as any).get === "function" ? (h as any).get("etag") : undefined) ??
-    h["etag"] ??
-    h["ETag"] ??
-    h["Etag"];
-  return typeof etagVal === "string" ? etagVal : undefined;
+  if ("get" in headers && typeof headers.get === "function") {
+    const val: unknown = headers.get(headerName);
+    if (typeof val === "string") return val;
+  }
+  const lowerTarget = headerName.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lowerTarget && typeof v === "string") {
+      return v;
+    }
+  }
+  return undefined;
+}
+
+export function extractEtag(headers: unknown): string | undefined {
+  return extractHeaderValue(headers, "etag");
 }
 
 export async function fetchRawFileContent(
@@ -212,7 +220,7 @@ function validateGistResponse(
   fallbackId?: string
 ): { id: string; html_url: string; [key: string]: unknown } {
   const data = res.data;
-  const ctype = (res.headers as any)?.["content-type"] ?? (res.headers as any)?.get?.("content-type");
+  const ctype = extractHeaderValue(res.headers, "content-type");
   const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
   const id = typeof obj?.id === "string" && obj.id ? obj.id : fallbackId;
   if (!obj || !id) {

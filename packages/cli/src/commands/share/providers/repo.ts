@@ -177,7 +177,7 @@ export class RepoShareProvider implements ShareProvider {
       }
     }
 
-    let sPub: any;
+    let sPub: ReturnType<typeof p.spinner> | undefined;
     if (!isAgentMode) {
       sPub = p.spinner();
       sPub.start(`Publishing pack to GitHub repository ${repoFullName}...`);

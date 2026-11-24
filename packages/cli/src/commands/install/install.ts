@@ -34,7 +34,7 @@ export async function installCommand(
     p.intro(pc.bgCyan(pc.black(" smcp — Install Agent Pack ")));
   }
 
-  let sFetch: any;
+  let sFetch: ReturnType<typeof p.spinner> | undefined;
   if (!isAgentMode && process.stdout.isTTY) {
     sFetch = p.spinner();
     sFetch.start(`Fetching pack from ${source}...`);
@@ -298,7 +298,7 @@ export async function installCommand(
     options?.scope || (options?.project ? "project" : options?.global ? "global" : undefined);
 
   // Perform Installation
-  let sInst: any;
+  let sInst: ReturnType<typeof p.spinner> | undefined;
   if (!isAgentMode && process.stdout.isTTY) {
     sInst = p.spinner();
     sInst.start("Installing skills and configuring MCP servers...");

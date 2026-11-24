@@ -2,7 +2,10 @@ import fs from "node:fs";
 import type { McpServerConfig } from "../../types/index.ts";
 import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
-import { isPrototypePollutionKey } from "../../utils/security.ts";
+import {
+  isPrototypePollutionKey,
+  stripPrototypePollutionKeys
+} from "../../utils/security.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { getMcpAdapter, StandardMcpAdapter } from "./adapters/index.ts";
 
@@ -98,9 +101,7 @@ export function mergeMcpServersIntoFile(
     }
   }
 
-  if (Object.hasOwn(config, "__proto__")) delete (config as any)["__proto__"];
-  if (Object.hasOwn(config, "constructor")) delete (config as any)["constructor"];
-  if (Object.hasOwn(config, "prototype")) delete (config as any)["prototype"];
+  stripPrototypePollutionKeys(config);
 
   let targetKey = mcpKey;
   if (
@@ -139,17 +140,13 @@ export function mergeMcpServersIntoFile(
       config.mcp = {};
     }
     const mcpObj = config.mcp as Record<string, unknown>;
-    if (Object.hasOwn(mcpObj, "__proto__")) delete (mcpObj as any)["__proto__"];
-    if (Object.hasOwn(mcpObj, "constructor")) delete (mcpObj as any)["constructor"];
-    if (Object.hasOwn(mcpObj, "prototype")) delete (mcpObj as any)["prototype"];
+    stripPrototypePollutionKeys(mcpObj);
 
     if (!mcpObj.servers || typeof mcpObj.servers !== "object" || Array.isArray(mcpObj.servers)) {
       mcpObj.servers = {};
     }
     const serversMap = mcpObj.servers as Record<string, unknown>;
-    if (Object.hasOwn(serversMap, "__proto__")) delete (serversMap as any)["__proto__"];
-    if (Object.hasOwn(serversMap, "constructor")) delete (serversMap as any)["constructor"];
-    if (Object.hasOwn(serversMap, "prototype")) delete (serversMap as any)["prototype"];
+    stripPrototypePollutionKeys(serversMap);
 
     // Migrate any legacy mcpServers in config to mcp.servers
     if (config.mcpServers && typeof config.mcpServers === "object" && !Array.isArray(config.mcpServers)) {
@@ -201,9 +198,7 @@ export function mergeMcpServersIntoFile(
       !Array.isArray(existingServers)
     ) {
       serversMap = existingServers as Record<string, unknown>;
-      if (Object.hasOwn(serversMap, "__proto__")) delete (serversMap as any)["__proto__"];
-      if (Object.hasOwn(serversMap, "constructor")) delete (serversMap as any)["constructor"];
-      if (Object.hasOwn(serversMap, "prototype")) delete (serversMap as any)["prototype"];
+      stripPrototypePollutionKeys(serversMap);
     } else {
       serversMap = {};
       config[targetKey] = serversMap;

@@ -147,11 +147,13 @@ export function redactMcpServers(
       updatedConfig.command = cmdStr;
     } else if (Array.isArray(rawCommand)) {
       const cmdArr = [...rawCommand];
-      const updatedCmdArr: (string | unknown)[] = [];
+      const updatedCmdArr: string[] = [];
       for (let i = 0; i < cmdArr.length; i++) {
         const item = cmdArr[i];
         if (typeof item !== "string") {
-          updatedCmdArr.push(item);
+          if (item !== undefined && item !== null) {
+            updatedCmdArr.push(String(item));
+          }
           continue;
         }
 
@@ -229,7 +231,7 @@ export function redactMcpServers(
           updatedCmdArr.push(item);
         }
       }
-      updatedConfig.command = updatedCmdArr as any;
+      updatedConfig.command = updatedCmdArr;
     }
 
     // 1. Redact env / environment object
@@ -419,12 +421,12 @@ export function redactMcpServers(
     }
 
     // 4. Redact headers (e.g. Authorization Bearer tokens, x-api-key for remote MCP servers)
-    const rawHeaders = (config as Record<string, unknown>).headers;
+    const rawHeaders = config.headers;
     if (rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders)) {
-      const updatedHeaders: Record<string, string> = {};
+      const updatedHeaders: Record<string, unknown> = {};
       for (const [headerKey, headerVal] of Object.entries(rawHeaders)) {
         if (typeof headerVal !== "string") {
-          updatedHeaders[headerKey] = headerVal as any;
+          updatedHeaders[headerKey] = headerVal;
           continue;
         }
 
@@ -468,7 +470,7 @@ export function redactMcpServers(
           updatedHeaders[headerKey] = headerVal;
         }
       }
-      (updatedConfig as any).headers = updatedHeaders;
+      updatedConfig.headers = updatedHeaders;
     }
 
     redacted[serverName] = updatedConfig;

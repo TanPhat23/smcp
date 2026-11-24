@@ -23,3 +23,11 @@ export function containsNullByte(input: unknown): boolean {
   if (typeof input !== "string") return false;
   return input.includes("\0");
 }
+
+export function stripPrototypePollutionKeys(obj: Record<string, unknown>): void {
+  for (const key of PROTOTYPE_POLLUTION_KEYS) {
+    if (Object.hasOwn(obj, key)) {
+      Reflect.deleteProperty(obj, key);
+    }
+  }
+}

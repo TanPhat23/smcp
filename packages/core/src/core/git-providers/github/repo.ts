@@ -3,6 +3,7 @@ import { type AxiosInstance, isAxiosError } from "axios";
 import { ManifestSchema, type Manifest } from "../../../types/index.ts";
 import { formatApiError } from "./errors.ts";
 import { createGitHubAxios } from "./client.ts";
+import { fetchRelevantRepoBlobs } from "../repo-utils.ts";
 import type {
   GitHubClientOptions,
   GitHubRepoRef,
@@ -425,52 +426,8 @@ export async function fetchRepoPack(
     const prefix = subpath ? `${subpath}/` : "";
     const blobItems = tree.filter((item) => item.type === "blob" && item.path !== manifestPath);
 
-    const relevantBlobs = blobItems.filter((item) => {
-      if (prefix && !item.path.startsWith(prefix)) {
-        return false;
-      }
-      const rel = prefix ? item.path.slice(prefix.length) : item.path;
-      return (
-        rel.startsWith("skills/") ||
-        rel.startsWith("plugins/") ||
-        rel.endsWith(".md") ||
-        rel.endsWith(".json")
-      );
-    });
-
-    await Promise.all(
-      relevantBlobs.map(async (blob) => {
-        try {
-          const content = await fetchRepoFileContent(
-            client,
-            owner,
-            repo,
-            ref,
-            blob.path,
-            blob.sha
-          );
-          const relPath = prefix ? blob.path.slice(prefix.length) : blob.path;
-          rawFiles[relPath] = content;
-
-          if (relPath.startsWith("skills/")) {
-            const parts = relPath.split("/");
-            if (parts.length >= 3) {
-              const skillName = parts[1];
-              const filePart = parts.slice(2).join("_");
-              rawFiles[`skills_${skillName}_${filePart}`] = content;
-            }
-          } else if (relPath.startsWith("plugins/")) {
-            const parts = relPath.split("/");
-            if (parts.length >= 3) {
-              const pluginName = parts[1];
-              const filePart = parts.slice(2).join("_");
-              rawFiles[`plugins_${pluginName}_${filePart}`] = content;
-            }
-          }
-        } catch {
-          // Ignore non-fatal auxiliary file errors
-        }
-      })
+    await fetchRelevantRepoBlobs(blobItems, manifest, prefix, rawFiles, (blob) =>
+      fetchRepoFileContent(client, owner, repo, ref, blob.path, blob.sha)
     );
 
     return {

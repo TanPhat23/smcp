@@ -12,6 +12,9 @@ export interface AtomicWriteOptions {
 
 export const DEFAULT_IGNORE_PATTERNS: string[] = [
   ".git",
+  ".in_use",
+  ".venv",
+  "__pycache__",
   "node_modules",
   "dist",
   "build",

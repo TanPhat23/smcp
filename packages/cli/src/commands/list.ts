@@ -137,8 +137,8 @@ export function listCommand(options?: ListCommandOptions): void {
             if (cfg.url) {
               console.log(`        ${pc.dim("URL:")} ${cfg.url}`);
             }
-            if ((cfg as any).type) {
-              console.log(`        ${pc.dim("Type:")} ${(cfg as any).type}`);
+            if (cfg.type) {
+              console.log(`        ${pc.dim("Type:")} ${cfg.type}`);
             }
             if (cfg.env && Object.keys(cfg.env).length > 0) {
               const envList = Object.entries(cfg.env)

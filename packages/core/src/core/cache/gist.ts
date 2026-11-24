@@ -14,11 +14,13 @@ export function getGistCacheDir(): string {
 }
 
 function resolveGistCacheFile(id: string): string {
-  const cleanId = id.includes("/")
-    ? id.split("/").filter(Boolean).pop()?.replace(/\.git$/, "") || id
-    : id;
-  const baseId = cleanId.replace(/\.json$/, "");
-  return path.join(getGistCacheDir(), `${baseId}.json`);
+  const normalized = id.replaceAll("\\", "/");
+  const cleanId = normalized.includes("/")
+    ? normalized.split("/").filter(Boolean).pop()?.replace(/\.git$/, "") || id
+    : normalized;
+  const baseId = cleanId.replace(/\.json$/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeBase = baseId === "." || baseId === ".." || !baseId ? "invalid" : baseId;
+  return path.join(getGistCacheDir(), `${safeBase}.json`);
 }
 
 export function readGistCache(

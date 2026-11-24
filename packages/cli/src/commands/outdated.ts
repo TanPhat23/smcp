@@ -22,7 +22,7 @@ export async function outdatedCommand(options?: OutdatedCommandOptions): Promise
     return;
   }
 
-  let sCheck: any;
+  let sCheck: ReturnType<typeof p.spinner> | undefined;
   if (!isAgentMode) {
     p.intro(pc.bgCyan(pc.black(" smcp — Check for Updates ")));
     sCheck = p.spinner();

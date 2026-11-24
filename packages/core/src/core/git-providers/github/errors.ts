@@ -1,5 +1,19 @@
 import { isAxiosError } from "axios";
 
+function formatErrorItem(e: unknown): string {
+  if (!e || typeof e !== "object") {
+    return String(e);
+  }
+  const rec = e as Record<string, unknown>;
+  if (typeof rec.message === "string" && rec.message) {
+    return rec.message;
+  }
+  if (typeof rec.field === "string" && typeof rec.code === "string" && rec.field && rec.code) {
+    return `${rec.field} (${rec.code})`;
+  }
+  return JSON.stringify(e);
+}
+
 export function extractErrorDetail(body: unknown): string {
   if (typeof body === "string") {
     const trimmed = body.trim();
@@ -9,16 +23,7 @@ export function extractErrorDetail(body: unknown): string {
   if (body && typeof body === "object") {
     const { message, errors } = body as { message?: string; errors?: unknown };
     const errList = Array.isArray(errors)
-      ? errors
-          .map((e) =>
-            typeof e === "object" && e
-              ? (e as any).message ||
-                ((e as any).field && (e as any).code
-                  ? `${(e as any).field} (${(e as any).code})`
-                  : JSON.stringify(e))
-              : String(e)
-          )
-          .join(", ")
+      ? errors.map(formatErrorItem).join(", ")
       : errors
       ? String(errors)
       : "";
@@ -41,7 +46,12 @@ export async function parseResponseBody(
   }
 
   if (target && typeof target === "object" && "status" in target) {
-    const res = target as Response;
+    const res = target as {
+      status?: number;
+      statusText?: string;
+      text?: () => Promise<string>;
+      data?: unknown;
+    };
     let data: unknown;
     if (typeof res.text === "function") {
       try {
@@ -54,8 +64,8 @@ export async function parseResponseBody(
       } catch {
         // Response body could not be read
       }
-    } else if ("data" in (res as any)) {
-      data = (res as any).data;
+    } else if ("data" in res) {
+      data = res.data;
     }
     return { status: res.status, statusText: res.statusText, data };
   }

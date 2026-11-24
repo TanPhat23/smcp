@@ -289,7 +289,7 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
   }
 
   // 5. Redact secrets
-  let sRedact: any;
+  let sRedact: ReturnType<typeof p.spinner> | undefined;
   if (!isAgentMode) {
     sRedact = p.spinner();
     sRedact.start("Analyzing and redacting sensitive credentials...");

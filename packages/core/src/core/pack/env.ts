@@ -44,7 +44,7 @@ export function collectRequiredEnv(manifest: Manifest, options?: RedactorOptions
     if (sConf.url) {
       scanForPlaceholders(sConf.url, false);
     }
-    const headers = (sConf as any).headers;
+    const headers = sConf.headers;
     if (headers && typeof headers === "object" && !Array.isArray(headers)) {
       for (const [hk, hv] of Object.entries(headers)) {
         if (typeof hv === "string") {

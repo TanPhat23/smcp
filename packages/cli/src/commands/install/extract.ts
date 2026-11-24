@@ -10,6 +10,102 @@ import {
   type SkillEntry
 } from "@tanphat/smcp-core";
 
+function isSafeEntryName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    name.length > 0 &&
+    !name.includes("..") &&
+    !containsNullByte(name) &&
+    !path.isAbsolute(name) &&
+    !isPrototypePollutionKey(name) &&
+    !isWindowsReservedName(name)
+  );
+}
+
+function isSafeRelFilePath(relName: string): boolean {
+  return (
+    Boolean(relName) &&
+    !relName.includes("..") &&
+    !path.isAbsolute(relName) &&
+    !relName.startsWith("/") &&
+    !relName.startsWith("\\") &&
+    !containsNullByte(relName) &&
+    !isPrototypePollutionKey(relName) &&
+    !isWindowsReservedName(relName)
+  );
+}
+
+function copyInlineFiles(inlineFiles: Record<string, string>, dest: Record<string, string>): void {
+  for (const [fn, cnt] of Object.entries(inlineFiles)) {
+    if (isSafeRelFilePath(fn)) {
+      dest[fn] = cnt;
+    }
+  }
+}
+
+function collectRawFilesByPrefixes(
+  rawFiles: Record<string, string>,
+  prefixes: string[],
+  dest: Record<string, string>
+): boolean {
+  for (const prefix of prefixes) {
+    for (const [fname, content] of Object.entries(rawFiles)) {
+      if (fname.startsWith(prefix)) {
+        const relName = fname.slice(prefix.length);
+        if (isSafeRelFilePath(relName)) {
+          dest[relName] = content;
+        }
+      }
+    }
+    if (Object.keys(dest).length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function collectLocalBundleDirFiles(
+  localDir: string,
+  candidateSubDirs: string[],
+  dest: Record<string, string>
+): boolean {
+  if (!fs.existsSync(localDir)) return false;
+  const resolvedLocalDir = path.resolve(localDir);
+
+  for (const cDir of candidateSubDirs) {
+    const resolvedCDir = path.resolve(cDir);
+    if (!isStrictlyInside(resolvedLocalDir, resolvedCDir)) {
+      continue;
+    }
+    if (fs.existsSync(resolvedCDir) && fs.statSync(resolvedCDir).isDirectory()) {
+      const canonicalCDir = fs.realpathSync(resolvedCDir);
+      if (!isStrictlyInside(resolvedLocalDir, canonicalCDir) && canonicalCDir !== resolvedLocalDir) {
+        continue;
+      }
+      const allEntries = fs.readdirSync(canonicalCDir, { recursive: true, encoding: "utf8" });
+      for (const entry of allEntries) {
+        if (typeof entry !== "string") continue;
+        const full = path.join(canonicalCDir, entry);
+        if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+          const realFull = fs.realpathSync(full);
+          if (!isStrictlyInside(canonicalCDir, realFull)) {
+            continue;
+          }
+          const rel = path.relative(canonicalCDir, full).replaceAll("\\", "/");
+          if (!isSafeRelFilePath(rel)) {
+            continue;
+          }
+          dest[rel] = fs.readFileSync(full, "utf8");
+        }
+      }
+      if (Object.keys(dest).length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function extractSkillFiles(
   skill: SkillEntry,
   rawFiles?: Record<string, string>,
@@ -17,99 +113,41 @@ export function extractSkillFiles(
 ): Record<string, string> {
   const filesToInstall: Record<string, string> = {};
 
-  if (
-    !skill ||
-    !skill.name ||
-    typeof skill.name !== "string" ||
-    skill.name.includes("..") ||
-    containsNullByte(skill.name) ||
-    path.isAbsolute(skill.name) ||
-    isPrototypePollutionKey(skill.name) ||
-    isWindowsReservedName(skill.name)
-  ) {
+  if (!skill || !isSafeEntryName(skill.name)) {
     return filesToInstall;
   }
 
   // 1. Check skill.files from manifest
   if (skill.files && typeof skill.files === "object" && !Array.isArray(skill.files)) {
-    for (const [fn, cnt] of Object.entries(skill.files)) {
-      if (
-        fn &&
-        !fn.includes("..") &&
-        !path.isAbsolute(fn) &&
-        !containsNullByte(fn) &&
-        !isPrototypePollutionKey(fn) &&
-        !isWindowsReservedName(fn)
-      ) {
-        filesToInstall[fn] = cnt;
-      }
-    }
+    copyInlineFiles(skill.files, filesToInstall);
     if (Object.keys(filesToInstall).length > 0) {
       return filesToInstall;
     }
   }
 
-  // 2. Check Gist rawFiles with prefix skills_${skill.name}_
-  if (rawFiles) {
-    const prefix = `skills_${skill.name}_`;
-    for (const [fname, content] of Object.entries(rawFiles)) {
-      if (fname.startsWith(prefix)) {
-        const relName = fname.slice(prefix.length);
-        if (
-          relName &&
-          !relName.includes("..") &&
-          !path.isAbsolute(relName) &&
-          !relName.startsWith("/") &&
-          !relName.startsWith("\\") &&
-          !containsNullByte(relName) &&
-          !isPrototypePollutionKey(relName) &&
-          !isWindowsReservedName(relName)
-        ) {
-          filesToInstall[relName] = content;
-        }
-      }
-    }
-    if (Object.keys(filesToInstall).length > 0) {
-      return filesToInstall;
-    }
+  // 2. Check repo slash path first, then flattened Gist rawFiles prefix
+  if (
+    rawFiles &&
+    collectRawFilesByPrefixes(
+      rawFiles,
+      [`skills/${skill.name}/`, `skills_${skill.name}_`],
+      filesToInstall
+    )
+  ) {
+    return filesToInstall;
   }
 
   // 3. Check localDir/skills/<skill.name> or localDir/<skill.name>
-  if (localDir && fs.existsSync(localDir)) {
+  if (localDir) {
     const resolvedLocalDir = path.resolve(localDir);
-    const candidateDirs = [
-      path.join(resolvedLocalDir, "skills", skill.name),
-      path.join(resolvedLocalDir, skill.name)
-    ];
-    for (const cDir of candidateDirs) {
-      const resolvedCDir = path.resolve(cDir);
-      if (!isStrictlyInside(resolvedLocalDir, resolvedCDir)) {
-        continue;
-      }
-      if (fs.existsSync(resolvedCDir) && fs.statSync(resolvedCDir).isDirectory()) {
-        const canonicalCDir = fs.realpathSync(resolvedCDir);
-        if (!isStrictlyInside(resolvedLocalDir, canonicalCDir) && canonicalCDir !== resolvedLocalDir) {
-          continue;
-        }
-        const allEntries = fs.readdirSync(canonicalCDir, { recursive: true });
-        for (const entry of allEntries) {
-          const full = path.join(canonicalCDir, entry as string);
-          if (fs.existsSync(full) && fs.statSync(full).isFile()) {
-            const realFull = fs.realpathSync(full);
-            if (!isStrictlyInside(canonicalCDir, realFull)) {
-              continue;
-            }
-            const rel = path.relative(canonicalCDir, full).replaceAll("\\", "/");
-            if (rel.includes("..") || path.isAbsolute(rel) || isPrototypePollutionKey(rel)) {
-              continue;
-            }
-            filesToInstall[rel] = fs.readFileSync(full, "utf8");
-          }
-        }
-        if (Object.keys(filesToInstall).length > 0) {
-          return filesToInstall;
-        }
-      }
+    if (
+      collectLocalBundleDirFiles(
+        localDir,
+        [path.join(resolvedLocalDir, "skills", skill.name), path.join(resolvedLocalDir, skill.name)],
+        filesToInstall
+      )
+    ) {
+      return filesToInstall;
     }
   }
 
@@ -126,34 +164,15 @@ export function extractPluginFiles(
   rawFiles?: Record<string, string>,
   localDir?: string
 ): Record<string, string> {
-  const pName = typeof plugin === "string" ? plugin : plugin.name;
+  const pName = typeof plugin === "string" ? plugin : plugin?.name;
   const filesToInstall: Record<string, string> = {};
 
-  if (
-    !pName ||
-    typeof pName !== "string" ||
-    pName.includes("..") ||
-    containsNullByte(pName) ||
-    path.isAbsolute(pName) ||
-    isPrototypePollutionKey(pName) ||
-    isWindowsReservedName(pName)
-  ) {
+  if (!isSafeEntryName(pName)) {
     return filesToInstall;
   }
 
   if (typeof plugin === "object" && plugin.files && Object.keys(plugin.files).length > 0) {
-    for (const [fn, cnt] of Object.entries(plugin.files)) {
-      if (
-        fn &&
-        !fn.includes("..") &&
-        !path.isAbsolute(fn) &&
-        !containsNullByte(fn) &&
-        !isPrototypePollutionKey(fn) &&
-        !isWindowsReservedName(fn)
-      ) {
-        filesToInstall[fn] = cnt;
-      }
-    }
+    copyInlineFiles(plugin.files, filesToInstall);
     if (Object.keys(filesToInstall).length > 0) {
       return filesToInstall;
     }
@@ -161,64 +180,27 @@ export function extractPluginFiles(
 
   if (rawFiles) {
     const sanitizedName = pName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const prefix = `plugins_${sanitizedName}_`;
-    for (const [fname, content] of Object.entries(rawFiles)) {
-      if (fname.startsWith(prefix)) {
-        const relName = fname.slice(prefix.length);
-        if (
-          relName &&
-          !relName.includes("..") &&
-          !path.isAbsolute(relName) &&
-          !relName.startsWith("/") &&
-          !relName.startsWith("\\") &&
-          !containsNullByte(relName) &&
-          !isPrototypePollutionKey(relName) &&
-          !isWindowsReservedName(relName)
-        ) {
-          filesToInstall[relName] = content;
-        }
-      }
-    }
-    if (Object.keys(filesToInstall).length > 0) {
+    if (
+      collectRawFilesByPrefixes(
+        rawFiles,
+        [`plugins/${pName}/`, `plugins_${sanitizedName}_`],
+        filesToInstall
+      )
+    ) {
       return filesToInstall;
     }
   }
 
-  if (localDir && fs.existsSync(localDir)) {
+  if (localDir) {
     const resolvedLocalDir = path.resolve(localDir);
-    const candidateDirs = [
-      path.join(resolvedLocalDir, "plugins", pName),
-      path.join(resolvedLocalDir, pName)
-    ];
-    for (const cDir of candidateDirs) {
-      const resolvedCDir = path.resolve(cDir);
-      if (!isStrictlyInside(resolvedLocalDir, resolvedCDir)) {
-        continue;
-      }
-      if (fs.existsSync(resolvedCDir) && fs.statSync(resolvedCDir).isDirectory()) {
-        const canonicalCDir = fs.realpathSync(resolvedCDir);
-        if (!isStrictlyInside(resolvedLocalDir, canonicalCDir) && canonicalCDir !== resolvedLocalDir) {
-          continue;
-        }
-        const allEntries = fs.readdirSync(canonicalCDir, { recursive: true });
-        for (const entry of allEntries) {
-          const full = path.join(canonicalCDir, entry as string);
-          if (fs.existsSync(full) && fs.statSync(full).isFile()) {
-            const realFull = fs.realpathSync(full);
-            if (!isStrictlyInside(canonicalCDir, realFull)) {
-              continue;
-            }
-            const rel = path.relative(canonicalCDir, full).replaceAll("\\", "/");
-            if (rel.includes("..") || path.isAbsolute(rel) || isPrototypePollutionKey(rel)) {
-              continue;
-            }
-            filesToInstall[rel] = fs.readFileSync(full, "utf8");
-          }
-        }
-        if (Object.keys(filesToInstall).length > 0) {
-          return filesToInstall;
-        }
-      }
+    if (
+      collectLocalBundleDirFiles(
+        localDir,
+        [path.join(resolvedLocalDir, "plugins", pName), path.join(resolvedLocalDir, pName)],
+        filesToInstall
+      )
+    ) {
+      return filesToInstall;
     }
   }
 

@@ -129,7 +129,10 @@ describe("Antigravity (agy) on-disk layout & lifecycle", () => {
     const adapter = new StandardMcpAdapter();
     const deserialized = adapter.deserialize({ serverUrl: "https://x.dev/mcp" });
     expect(deserialized.url).toBe("https://x.dev/mcp");
-    const serialized = adapter.serialize({ serverUrl: "https://x.dev/mcp" } as Manifest["mcpServers"][string], { agentId: "agy" });
+    const serialized = adapter.serialize(
+      { serverUrl: "https://x.dev/mcp" } as NonNullable<Manifest["mcpServers"]>[string],
+      { agentId: "agy" }
+    );
     expect(serialized.url).toBe("https://x.dev/mcp");
     expect(serialized.serverUrl).toBeUndefined();
   });
@@ -195,7 +198,7 @@ describe("Antigravity (agy) on-disk layout & lifecycle", () => {
     const skillFiles = { "SKILL.md": "---\nname: agy-skill\ndescription: Skill for agy\n---\nInstructions" };
     const result = installPackIntoAgents(
       manifest({
-        skills: [{ name: "agy-skill", files: skillFiles } as NonNullable<Manifest["skills"]>[number]],
+        skills: [{ name: "agy-skill", path: "skills/agy-skill/SKILL.md", files: skillFiles }],
         plugins: [
           {
             name: "my-agy-bundle",

@@ -161,8 +161,9 @@ export class OpenCodeMcpAdapter implements McpAdapter {
       localConfig.command = cmdArray;
     }
 
+    const rawServerRecord: Record<string, unknown> = serverConfig;
     const envData = sanitizeRecord(
-      serverConfig.env || (serverConfig as any).environment || baseExisting.environment
+      serverConfig.env || rawServerRecord.environment || baseExisting.environment
     );
     if (envData) {
       localConfig.environment = envData;

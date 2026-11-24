@@ -7,7 +7,8 @@ import type {
 } from "./types.ts";
 
 interface RegisteredHookEntry {
-  fn: HookFn<any>;
+  rawFn: HookFn<never>;
+  run: (context: unknown) => Promise<void> | void;
   priority: number;
   order: number;
 }
@@ -35,12 +36,12 @@ export function registerHook<K extends keyof LifecycleEventMap>(
   fn: HookFn<LifecycleEventMap[K]>,
   options?: HookOptions
 ): () => void;
-export function registerHook<T = any>(
+export function registerHook<T = unknown>(
   event: LifecycleEvent | string,
   fn: HookFn<T>,
   options?: HookOptions
 ): () => void;
-export function registerHook<T = any>(
+export function registerHook<T = unknown>(
   event: LifecycleEvent | string,
   fn: HookFn<T>,
   options?: HookOptions
@@ -56,7 +57,8 @@ export function registerHook<T = any>(
       : 100;
 
   const entry: RegisteredHookEntry = {
-    fn,
+    rawFn: fn as HookFn<never>,
+    run: (context: unknown) => fn(context as T),
     priority,
     order: ++hookOrderCounter
   };
@@ -107,7 +109,7 @@ export function unregisterHook(event: LifecycleEvent | string, fn: HookFn): bool
     return false;
   }
 
-  const idx = currentList.findIndex((h) => h.fn === fn);
+  const idx = currentList.findIndex((h) => h.rawFn === fn);
   if (idx === -1) {
     return false;
   }
@@ -127,11 +129,11 @@ export async function triggerHook<K extends keyof LifecycleEventMap>(
   event: K,
   context: LifecycleEventMap[K]
 ): Promise<void>;
-export async function triggerHook<T = any>(
+export async function triggerHook<T = unknown>(
   event: string,
   context: T
 ): Promise<void>;
-export async function triggerHook<T = any>(
+export async function triggerHook<T = unknown>(
   event: string,
   context: T
 ): Promise<void> {
@@ -150,7 +152,7 @@ export async function triggerHook<T = any>(
   });
 
   for (const hook of sorted) {
-    await hook.fn(context);
+    await hook.run(context);
   }
 }
 

@@ -50,7 +50,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.5.0")
+    .version("0.5.1")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions")
     .option(
@@ -292,7 +292,9 @@ export async function runCli(args: string[] = process.argv): Promise<void> {
 }
 
 const isDirectRun =
-  (typeof Bun !== "undefined" && Boolean((import.meta as any).main)) ||
+  (typeof Bun !== "undefined" &&
+    "main" in import.meta &&
+    Boolean((import.meta as ImportMeta & { main?: boolean }).main)) ||
   (typeof process !== "undefined" &&
     process.argv[1] &&
     (process.argv[1].endsWith("cli.ts") || process.argv[1].endsWith("/cli.js")) &&

@@ -4,6 +4,7 @@ import {
   BINARY_EXTENSIONS,
   collectDirectoryFilesAsync,
   hashObject,
+  isIgnoredPath,
   isStrictlyInside,
   type PluginEntry,
   type PluginObjectEntry,
@@ -41,9 +42,10 @@ export function bundleSkillFiles(skills: SkillEntry[]): {
 
     if (skillDir) {
       const canonicalSkillDir = fs.existsSync(skillDir) ? fs.realpathSync(skillDir) : skillDir;
-      const allEntries = fs.readdirSync(skillDir, { recursive: true });
+      const allEntries = fs.readdirSync(skillDir, { recursive: true, encoding: "utf8" });
       for (const entry of allEntries) {
-        const full = path.join(skillDir, entry as string);
+        if (typeof entry !== "string") continue;
+        const full = path.join(skillDir, entry);
         if (fs.existsSync(full)) {
           const lstat = fs.lstatSync(full);
           if (lstat.isSymbolicLink()) {
@@ -72,7 +74,7 @@ export function bundleSkillFiles(skills: SkillEntry[]): {
           if (isFile) {
             const rel = path.relative(skillDir, full).replaceAll("\\", "/");
             const segments = rel.split("/");
-            if (segments.some((seg) => seg.startsWith("."))) {
+            if (isIgnoredPath(rel) || segments.some((seg) => seg.startsWith("."))) {
               continue;
             }
             try {

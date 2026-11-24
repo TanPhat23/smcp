@@ -5,7 +5,11 @@ export const McpServerConfigSchema = z
     command: z.union([z.string(), z.array(z.string())]).optional(),
     args: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),
-    url: z.string().url().optional()
+    url: z.string().url().optional(),
+    headers: z.record(z.string(), z.unknown()).optional(),
+    type: z.string().optional(),
+    disabled: z.boolean().optional(),
+    enabled: z.boolean().optional()
   })
   .passthrough();
 

@@ -72,8 +72,8 @@ export function installSkillFiles(
       if (!isStrictlyInside(canonicalBaseDir, realTargetDir)) {
         throw new Error(`Directory traversal detected in skill name: ${skillName}`);
       }
-    } catch (err: any) {
-      if (err.message?.includes("Directory traversal")) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("Directory traversal")) {
         throw err;
       }
       throw new Error(`Directory traversal detected in skill name: ${skillName}`);
@@ -135,8 +135,8 @@ export function installSkillFiles(
             if (!isStrictlyInside(canonicalBaseDir, realCurrent)) {
               throw new Error(`Directory traversal detected in filename: ${filename}`);
             }
-          } catch (err: any) {
-            if (err.message?.includes("Directory traversal")) {
+          } catch (err: unknown) {
+            if (err instanceof Error && err.message.includes("Directory traversal")) {
               throw err;
             }
             throw new Error(`Directory traversal detected in filename: ${filename}`);

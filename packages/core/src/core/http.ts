@@ -204,8 +204,8 @@ export function formatHttpError(err: unknown, fallbackMessage = "HTTP Request fa
 
     let detail = "";
     if (data && typeof data === "object") {
-      if ("message" in data && typeof (data as any).message === "string") {
-        detail = (data as any).message;
+      if ("message" in data && typeof data.message === "string") {
+        detail = data.message;
       } else {
         detail = JSON.stringify(data);
       }

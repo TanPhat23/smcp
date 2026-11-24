@@ -26,9 +26,9 @@ export function resolveMcpServerTemplates(
     if (typeof sConf.command === "string") {
       resolved.command = sConf.command.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar);
     } else if (Array.isArray(sConf.command)) {
-      resolved.command = (sConf.command as unknown[]).map((cmd) =>
-        typeof cmd === "string" ? cmd.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar) : cmd
-      ) as any;
+      resolved.command = sConf.command.map((cmd) =>
+        typeof cmd === "string" ? cmd.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar) : String(cmd)
+      );
     }
 
     if (sConf.env) {
@@ -49,16 +49,13 @@ export function resolveMcpServerTemplates(
       resolved.url = sConf.url.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar);
     }
 
-    if ((sConf as any).headers && typeof (sConf as any).headers === "object") {
-      const updatedHeaders: Record<string, string> = {};
-      for (const [k, v] of Object.entries((sConf as any).headers)) {
-        if (typeof v === "string") {
-          updatedHeaders[k] = v.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar);
-        } else {
-          updatedHeaders[k] = v as any;
-        }
+    if (sConf.headers && typeof sConf.headers === "object" && !Array.isArray(sConf.headers)) {
+      const updatedHeaders: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(sConf.headers)) {
+        updatedHeaders[k] =
+          typeof v === "string" ? v.replace(/\${([a-zA-Z0-9_]+)}/g, replaceVar) : v;
       }
-      (resolved as any).headers = updatedHeaders;
+      resolved.headers = updatedHeaders;
     }
 
     resolvedServers[sName] = resolved;

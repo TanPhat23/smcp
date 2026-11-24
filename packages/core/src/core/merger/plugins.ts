@@ -6,7 +6,8 @@ import { expandHome } from "../../utils/paths.ts";
 import {
   containsNullByte,
   isPrototypePollutionKey,
-  isWindowsReservedName
+  isWindowsReservedName,
+  stripPrototypePollutionKeys
 } from "../../utils/security.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { isStrictlyInside } from "./helpers.ts";
@@ -55,9 +56,7 @@ export function mergePluginsIntoFile(
     }
   }
 
-  if (Object.hasOwn(parsed, "__proto__")) delete (parsed as any)["__proto__"];
-  if (Object.hasOwn(parsed, "constructor")) delete (parsed as any)["constructor"];
-  if (Object.hasOwn(parsed, "prototype")) delete (parsed as any)["prototype"];
+  stripPrototypePollutionKeys(parsed);
 
   if (format === "array") {
     const actualKey =
@@ -107,9 +106,7 @@ export function mergePluginsIntoFile(
         ? (parsed[key] as Record<string, boolean>)
         : {};
 
-    if (Object.hasOwn(existingMap, "__proto__")) delete (existingMap as any)["__proto__"];
-    if (Object.hasOwn(existingMap, "constructor")) delete (existingMap as any)["constructor"];
-    if (Object.hasOwn(existingMap, "prototype")) delete (existingMap as any)["prototype"];
+    stripPrototypePollutionKeys(existingMap);
 
     const mergedMap = { ...existingMap };
     for (const name of pluginNames) {
@@ -197,12 +194,12 @@ export function installPluginFiles(
       throw new Error(`Directory traversal detected in plugin file: ${relPath}`);
     }
 
-    const targetFile =
-      cleanPluginName.endsWith(".ts") || cleanPluginName.endsWith(".js")
-        ? path.resolve(safeTargetDir, cleanPluginName)
-        : path.resolve(targetPluginDir, normalizedRel);
+    const isScriptFile = cleanPluginName.endsWith(".ts") || cleanPluginName.endsWith(".js");
+    const targetFile = isScriptFile
+      ? path.resolve(safeTargetDir, cleanPluginName)
+      : path.resolve(targetPluginDir, normalizedRel);
 
-    const checkRel = path.relative(safeTargetDir, targetFile);
+    const checkRel = path.relative(isScriptFile ? safeTargetDir : targetPluginDir, targetFile);
     if (!checkRel || checkRel.startsWith("..") || path.isAbsolute(checkRel)) {
       throw new Error(`Directory traversal detected in plugin file: ${relPath}`);
     }
