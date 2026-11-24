@@ -84,6 +84,17 @@ export class StandardMcpAdapter implements McpAdapter {
     }
     delete formatted.environment;
 
+    // Claude Code requires an explicit transport type for URL servers.
+    if (
+      _context?.agentId === "claude-code" &&
+      typeof formatted.url === "string" &&
+      formatted.url &&
+      formatted.command === undefined &&
+      formatted.type === undefined
+    ) {
+      formatted.type = /\/sse\/?(\?|$)/i.test(formatted.url) ? "sse" : "http";
+    }
+
     return cleanObjectWithoutPrototype(formatted);
   }
 

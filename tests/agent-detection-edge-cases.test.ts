@@ -118,11 +118,11 @@ describe("Agent Detection, Scanning & Filtering Deep Edge Cases", () => {
       expect(filterAgents(sampleAgents, [",,,"])).toEqual(sampleAgents);
     });
 
-    it("matches 'claude' alias to all claude agents (claude-code and claude-desktop)", () => {
+    it("matches 'claude' alias to claude-code only (Desktop must be named explicitly)", () => {
       const filtered = filterAgents(sampleAgents, ["claude"]);
       const ids = filtered.map((a) => a.id);
       expect(ids).toContain("claude-code");
-      expect(ids).toContain("claude-desktop");
+      expect(ids).not.toContain("claude-desktop");
       expect(ids).not.toContain("cursor");
       expect(ids).not.toContain("opencode");
     });

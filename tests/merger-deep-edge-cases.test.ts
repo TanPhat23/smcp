@@ -28,7 +28,7 @@ describe("Merger & File Installer Deep Edge Cases, Backups & Symlink Preservatio
   });
 
   describe("Corrupt Config Backup & Mode Preservation in mergeMcpServersIntoFile", () => {
-    it("creates a timestamped .bak file containing the exact corrupted content and writes clean config", () => {
+    it("refuses to overwrite a corrupt config and leaves the file untouched", () => {
       const configFile = path.join(tmpDir, "corrupted-settings.json");
       const corruptData = '{\n  "mcpServers": { broken json syntax\n';
       fs.writeFileSync(configFile, corruptData, { mode: 0o600 });
@@ -40,20 +40,11 @@ describe("Merger & File Installer Deep Edge Cases, Backups & Symlink Preservatio
         }
       };
 
-      mergeMcpServersIntoFile(configFile, newServers);
+      expect(() => mergeMcpServersIntoFile(configFile, newServers)).toThrow(/not valid JSON/);
 
-      // Verify original file now has valid JSON
-      const updatedRaw = fs.readFileSync(configFile, "utf8");
-      const updatedJson = JSON.parse(updatedRaw);
-      expect(updatedJson.mcpServers.recoveredServer).toBeDefined();
-
-      // Find and verify the backup file
-      const dirFiles = fs.readdirSync(tmpDir);
-      const bakFile = dirFiles.find((f) => f.startsWith("corrupted-settings.json.bak."));
-      expect(bakFile).toBeDefined();
-
-      const bakContent = fs.readFileSync(path.join(tmpDir, bakFile!), "utf8");
-      expect(bakContent).toBe(corruptData);
+      // Content is untouched and no backup/replacement was produced
+      expect(fs.readFileSync(configFile, "utf8")).toBe(corruptData);
+      expect(fs.readdirSync(tmpDir).some((f) => f.startsWith("corrupted-settings.json.bak."))).toBe(false);
 
       // Verify file permissions are preserved (0o600)
       const stat = fs.statSync(configFile);

@@ -22,19 +22,26 @@ describe("Agent Compilers (Minimal: OpenCode & Claude Code)", () => {
     expect(res.content).toContain("You are an adversarial reviewer.");
   });
 
-  it("compiles for Claude Code (.md slash command with $ARGUMENTS)", () => {
-    const res = compileAgentForHarness(sampleAgent, "claude-code");
+  it("compiles for Claude Code as a subagent (name/description/tools/model, no slash-command artifacts)", () => {
+    const res = compileAgentForHarness(
+      { ...sampleAgent, model: "sonnet", tools: ["Read", "Grep"] },
+      "claude-code"
+    );
     expect(res.filename).toBe("reviewer.md");
+    expect(res.content).toContain("name: reviewer");
     expect(res.content).toContain("description: Adversarial code reviewer");
-    expect(res.content).toContain("$ARGUMENTS");
+    expect(res.content).toContain("tools: Read, Grep");
+    expect(res.content).toContain("model: sonnet");
     expect(res.content).toContain("You are an adversarial reviewer.");
+    expect(res.content).not.toContain("$ARGUMENTS");
+    expect(res.content).not.toContain("allowed-tools");
   });
 
   it("supports 'claude' alias for claude-code harness", () => {
     const res = compileAgentForHarness(sampleAgent, "claude");
     expect(res.filename).toBe("reviewer.md");
-    expect(res.content).toContain("description: Adversarial code reviewer");
-    expect(res.content).toContain("$ARGUMENTS");
+    expect(res.content).toContain("name: reviewer");
+    expect(res.content).not.toContain("$ARGUMENTS");
   });
 
   it("applies opencode-specific overrides and permission mapping", () => {
@@ -62,69 +69,28 @@ describe("Agent Compilers (Minimal: OpenCode & Claude Code)", () => {
     expect(res.content).toContain("Custom instructions.");
   });
 
-  it("uses claude command override for filename if specified", () => {
-    const agentWithCmd: UniversalAgent = {
+  it("ignores slash-command-only claude overrides and keeps subagent overrides", () => {
+    const agent: UniversalAgent = {
       name: "security-auditor",
       description: "Audits security flaws",
       mode: "subagent",
       skills: [],
-      claude: {
-        command: "audit",
-        argument_hint: "[path]"
-      },
+      claude: { command: "audit", argument_hint: "[path]", color: "red" },
       prompt: "Find vulnerabilities."
     };
-    const res = compileAgentForHarness(agentWithCmd, "claude-code");
-    expect(res.filename).toBe("audit.md");
-    expect(res.content).toContain("argument-hint: \"[path]\"");
-    expect(res.content).toContain("$ARGUMENTS");
+    const res = compileAgentForHarness(agent, "claude-code");
+    expect(res.filename).toBe("security-auditor.md");
+    expect(res.content).toContain("color: red");
+    expect(res.content).not.toContain("argument-hint");
+    expect(res.content).not.toContain("command:");
   });
 
-  it("sanitizes path traversal in claude command name", () => {
-    const traversalAgent: UniversalAgent = {
-      name: "reviewer",
-      description: "Security reviewer",
-      mode: "subagent",
-      skills: [],
-      claude: {
-        command: "../../malicious/path/evil-cmd"
-      },
-      prompt: "Check security."
-    };
-    const res = compileAgentForHarness(traversalAgent, "claude-code");
-    expect(res.filename).toBe("evil-cmd.md");
-    expect(res.filename).not.toContain("/");
-    expect(res.filename).not.toContain("..");
-
-    const rootPathAgent: UniversalAgent = {
-      ...traversalAgent,
-      claude: { command: "/etc/cron.d/audit.md" }
-    };
-    const resRoot = compileAgentForHarness(rootPathAgent, "claude-code");
-    expect(resRoot.filename).toBe("audit.md");
-
-    const onlyDotsAgent: UniversalAgent = {
-      ...traversalAgent,
-      claude: { command: "../../../" }
-    };
-    const resDots = compileAgentForHarness(onlyDotsAgent, "claude-code");
-    expect(resDots.filename).toBe("reviewer.md");
-
-    const windowsSlashAgent: UniversalAgent = {
-      ...traversalAgent,
-      claude: { command: "..\\..\\evil_win" }
-    };
-    const resWin = compileAgentForHarness(windowsSlashAgent, "claude-code");
-    expect(resWin.filename).toBe("evil_win.md");
-
-    const emptyCmdAndNameAgent: UniversalAgent = {
-      name: "...",
-      description: "Empty name test",
-      claude: { command: "../../../" },
-      prompt: "Prompt"
-    };
-    const resFallback = compileAgentForHarness(emptyCmdAndNameAgent, "claude-code");
-    expect(resFallback.filename).toBe("agent.md");
+  it("sanitizes path traversal in claude agent name", () => {
+    const base: UniversalAgent = { name: "x", description: "d", skills: [], prompt: "p" };
+    expect(compileAgentForHarness({ ...base, name: "../../malicious/path/evil-cmd" }, "claude-code").filename).toBe("evil-cmd.md");
+    expect(compileAgentForHarness({ ...base, name: "/etc/cron.d/audit.md" }, "claude-code").filename).toBe("audit.md");
+    expect(compileAgentForHarness({ ...base, name: "..\\..\\evil_win" }, "claude-code").filename).toBe("evil_win.md");
+    expect(compileAgentForHarness({ ...base, name: "..." }, "claude-code").filename).toBe("agent.md");
   });
 
   it("skips prototype pollution keys in opencode overrides and permissions", () => {

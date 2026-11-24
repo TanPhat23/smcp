@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { type AgentProfile, type DetectedAgent } from "../../types/index.ts";
 import { expandHome } from "../../utils/paths.ts";
@@ -11,15 +12,25 @@ export interface ResolveActivePathOptions {
   cwd?: string;
 }
 
+function isUnderHomeDir(p: string): boolean {
+  if (!path.isAbsolute(p)) return false;
+  const home = path.resolve(os.homedir());
+  const abs = path.resolve(p);
+  const underHome = abs === home || abs.startsWith(home + path.sep);
+  if (!underHome) return false;
+  // A custom absolute path inside the current project is project scoped.
+  const cwd = path.resolve(process.cwd());
+  return !(abs === cwd || abs.startsWith(cwd + path.sep));
+}
+
 export function isGlobalConfigPath(p: string): boolean {
   if (typeof p !== "string") return false;
   return (
     p.startsWith("~/") ||
     p.startsWith("~\\") ||
     p.includes("%APPDATA%") ||
-    p.startsWith("/home") ||
+    isUnderHomeDir(p) ||
     /^[a-zA-Z]:[/\\]Users[/\\]/i.test(p) ||
-    p.includes(".config") ||
     p.includes("AppData") ||
     p.includes("Library/Application Support")
   );

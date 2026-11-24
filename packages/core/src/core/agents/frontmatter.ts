@@ -46,6 +46,18 @@ export function parseAgentMarkdown(content: string, filename?: string): Universa
   const frontmatterData =
     parsedYaml === null || typeof parsedYaml === "undefined" ? {} : parsedYaml;
 
+  // Claude Code subagents declare `tools` as a comma-separated string.
+  if (
+    frontmatterData &&
+    typeof frontmatterData === "object" &&
+    typeof (frontmatterData as Record<string, unknown>).tools === "string"
+  ) {
+    (frontmatterData as Record<string, unknown>).tools = String((frontmatterData as Record<string, unknown>).tools)
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
   const validationResult = UniversalAgentFrontmatterSchema.safeParse(frontmatterData);
   if (!validationResult.success) {
     const issueMessages = validationResult.error.issues.map(

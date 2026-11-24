@@ -11,6 +11,8 @@ import {
 import { stripJsonComments } from "../agents/index.ts";
 import { isStrictlyInside } from "./helpers.ts";
 
+const MARKETPLACE_PLUGIN_ID = /^[^@\s/\\]+@[^@\s/\\]+$/;
+
 export function mergePluginsIntoFile(
   filePath: string,
   plugins: (string | PluginEntry)[],
@@ -27,11 +29,7 @@ export function mergePluginsIntoFile(
   const resolvedPath = expandHome(filePath);
   let content = "";
   if (fs.existsSync(resolvedPath)) {
-    try {
-      content = fs.readFileSync(resolvedPath, "utf8");
-    } catch {
-      content = "";
-    }
+    content = fs.readFileSync(resolvedPath, "utf8");
   }
 
   const pluginNames: string[] = [];
@@ -50,11 +48,10 @@ export function mergePluginsIntoFile(
       if (res && typeof res === "object" && !Array.isArray(res)) {
         parsed = res;
       }
-    } catch {
-      const backupPath = `${resolvedPath}.bak.${Date.now()}`;
-      fs.writeFileSync(backupPath, content, "utf8");
-      console.warn(`Warning: Corrupted config at ${resolvedPath} was backed up to ${backupPath}`);
-      parsed = {};
+    } catch (err) {
+      throw new Error(
+        `Refusing to modify ${resolvedPath}: file is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix or remove it and retry.`
+      );
     }
   }
 
@@ -116,9 +113,16 @@ export function mergePluginsIntoFile(
 
     const mergedMap = { ...existingMap };
     for (const name of pluginNames) {
-      if (!isPrototypePollutionKey(name)) {
-        mergedMap[name] = true;
+      if (isPrototypePollutionKey(name)) continue;
+      // Claude Code only loads plugins keyed as <plugin>@<marketplace>; a bare
+      // name enables nothing, so don't write a misleading entry.
+      if (!MARKETPLACE_PLUGIN_ID.test(name)) {
+        console.warn(
+          `Warning: skipped plugin '${name}': Claude Code plugin ids must look like <name>@<marketplace> and be installed through a marketplace.`
+        );
+        continue;
       }
+      mergedMap[name] = true;
     }
 
     parsed[key] = mergedMap;

@@ -51,9 +51,13 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(claudeCode.name).toBe("Claude Code");
     expect(claudeCode.mcpConfig?.key).toBe("mcpServers");
     expect(claudeCode.mcpConfig?.paths).toContain("~/.claude.json");
-    expect(claudeCode.mcpConfig?.paths).toContain("./.claude.json");
+    expect(claudeCode.mcpConfig?.paths).toContain("./.mcp.json");
+    expect(claudeCode.mcpConfig?.paths).not.toContain("./.claude.json");
     expect(claudeCode.skills?.paths).toContain("~/.claude/skills");
-    expect(claudeCode.skills?.paths).toContain("./skills");
+    expect(claudeCode.skills?.paths).toContain("./.claude/skills");
+    expect(claudeCode.plugins?.paths).toContain("./.claude/settings.json");
+    expect(claudeCode.plugins?.paths).toContain("./.claude/settings.local.json");
+    expect(claudeCode.agents?.paths).toEqual(["~/.claude/agents", "./.claude/agents"]);
   });
 
   it("validates Claude Desktop profile paths, key, and null skills", () => {
@@ -1009,10 +1013,10 @@ describe("filterAgents()", () => {
     expect(filtered[0].id).toBe("opencode");
   });
 
-  it("filters with friendly alias 'claude' matching both claude-code and claude-desktop", () => {
+  it("filters with friendly alias 'claude' matching claude-code only, not claude-desktop", () => {
     const filtered = filterAgents(agents, ["claude"]);
-    expect(filtered).toHaveLength(2);
-    expect(filtered.map((a) => a.id)).toEqual(["claude-code", "claude-desktop"]);
+    expect(filtered.map((a) => a.id)).toEqual(["claude-code"]);
+    expect(filterAgents(agents, ["claude-desktop"]).map((a) => a.id)).toEqual(["claude-desktop"]);
   });
 
   it("supports comma-separated string inputs and case-insensitivity", () => {

@@ -1224,10 +1224,10 @@ describe("Commands Implementation", () => {
             files: { "index.ts": "console.log('opencode tool');" }
           },
           {
-            name: "claude-only-plugin",
+            name: "claude-only-plugin@market",
             targetAgent: "claude-code"
           },
-          "shared-plugin"
+          "shared-plugin@market"
         ],
         requiredEnv: []
       };
@@ -1249,14 +1249,14 @@ describe("Commands Implementation", () => {
       const opencodeParsed = JSON.parse(fs.readFileSync(opencodeConf, "utf8"));
       expect(opencodeParsed.plugin).toContain("existing-opencode-plugin");
       expect(opencodeParsed.plugin).toContain("opencode-only-plugin");
-      expect(opencodeParsed.plugin).toContain("shared-plugin");
-      expect(opencodeParsed.plugin).not.toContain("claude-only-plugin");
+      expect(opencodeParsed.plugin).toContain("shared-plugin@market");
+      expect(opencodeParsed.plugin).not.toContain("claude-only-plugin@market");
 
       // Verify Claude configuration
       const claudeParsed = JSON.parse(fs.readFileSync(claudeConf, "utf8"));
       expect(claudeParsed.enabledPlugins["existing-claude-plugin"]).toBe(true);
-      expect(claudeParsed.enabledPlugins["claude-only-plugin"]).toBe(true);
-      expect(claudeParsed.enabledPlugins["shared-plugin"]).toBe(true);
+      expect(claudeParsed.enabledPlugins["claude-only-plugin@market"]).toBe(true);
+      expect(claudeParsed.enabledPlugins["shared-plugin@market"]).toBe(true);
       expect(claudeParsed.enabledPlugins["opencode-only-plugin"]).toBeUndefined();
 
       // Verify plugin file was installed into pluginDir

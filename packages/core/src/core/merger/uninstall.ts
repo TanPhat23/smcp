@@ -1,7 +1,9 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { getAgentProfiles } from "../agents/profiles.ts";
 import { isStrictlyInside } from "./helpers.ts";
+import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
@@ -39,53 +41,58 @@ export function uninstallPackFromAgents(
       record.installedMcp &&
       record.installedMcp.length > 0
     ) {
-      const activePath = resolveActiveAgentPath(profile.mcpConfig.paths);
-      if (activePath && fs.existsSync(activePath)) {
+      // Install may have written to any scope, so check every candidate file.
+      const candidatePaths = new Set<string>();
+      for (const scope of ["global", "project"] as const) {
+        const resolved = resolveActiveAgentPath(profile.mcpConfig.paths, { scope });
+        if (resolved) candidatePaths.add(resolved);
+      }
+      for (const p of profile.mcpConfig.paths) {
+        candidatePaths.add(isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p));
+      }
+      const targetKey = profile.mcpConfig.key || "mcpServers";
+
+      for (const activePath of candidatePaths) {
+        if (!fs.existsSync(activePath)) continue;
         try {
-          const raw = fs.readFileSync(activePath, "utf8");
+          const writePath = fs.realpathSync(activePath);
+          const raw = fs.readFileSync(writePath, "utf8");
           const config = JSON.parse(stripJsonComments(raw));
+          if (!config || typeof config !== "object" || Array.isArray(config)) continue;
 
           let modified = false;
-
-          // Check OpenCode V2 format (mcp.servers)
-          if (
-            config.mcp &&
-            typeof config.mcp === "object" &&
-            !Array.isArray(config.mcp) &&
-            config.mcp.servers &&
-            typeof config.mcp.servers === "object" &&
-            !Array.isArray(config.mcp.servers)
-          ) {
+          const removeFrom = (map: unknown) => {
+            if (!map || typeof map !== "object" || Array.isArray(map)) return;
             for (const sName of record.installedMcp) {
-              if (config.mcp.servers[sName]) {
-                delete config.mcp.servers[sName];
+              if (isPrototypePollutionKey(sName)) continue;
+              if (Object.hasOwn(map, sName)) {
+                delete (map as Record<string, unknown>)[sName];
                 modified = true;
                 if (!removedMcp.includes(sName)) removedMcp.push(sName);
               }
             }
-          }
+          };
 
-          // Check standard format (mcpServers or profile.mcpConfig.key)
-          const targetKey = profile.mcpConfig.key || "mcpServers";
-          if (
-            config[targetKey] &&
-            typeof config[targetKey] === "object" &&
-            !Array.isArray(config[targetKey])
-          ) {
-            for (const sName of record.installedMcp) {
-              if (config[targetKey][sName]) {
-                delete config[targetKey][sName];
-                modified = true;
-                if (!removedMcp.includes(sName)) removedMcp.push(sName);
+          // OpenCode V2 format (mcp.servers)
+          if (config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)) {
+            removeFrom(config.mcp.servers);
+          }
+          // Standard format (mcpServers or profile.mcpConfig.key)
+          removeFrom(config[targetKey]);
+          // Claude Code per-project servers inside ~/.claude.json
+          if (config.projects && typeof config.projects === "object" && !Array.isArray(config.projects)) {
+            for (const dir of new Set([process.cwd(), os.homedir()])) {
+              if (Object.hasOwn(config.projects, dir)) {
+                removeFrom(config.projects[dir]?.mcpServers);
               }
             }
           }
 
           if (modified) {
-            fs.writeFileSync(activePath, JSON.stringify(config, null, 2), "utf8");
+            atomicWriteFileSync(writePath, JSON.stringify(config, null, 2) + "\n");
           }
         } catch {
-          // Ignore parse errors on uninstall
+          // Ignore parse errors on uninstall: never rewrite a file we can't parse
         }
       }
     }
@@ -115,6 +122,39 @@ export function uninstallPackFromAgents(
               // Ignore removal failure
             }
           }
+        }
+      }
+    }
+
+    // 3a. Remove enabled-plugin map entries (e.g. Claude Code enabledPlugins)
+    if (
+      profile.plugins &&
+      profile.plugins.format === "map" &&
+      profile.plugins.paths &&
+      record.installedPlugins &&
+      record.installedPlugins.length > 0
+    ) {
+      const mapKey = profile.plugins.key || "enabledPlugins";
+      for (const p of profile.plugins.paths) {
+        const file = isGlobalConfigPath(p) ? expandHome(p) : path.resolve(p);
+        if (!fs.existsSync(file)) continue;
+        try {
+          const writePath = fs.realpathSync(file);
+          const config = JSON.parse(stripJsonComments(fs.readFileSync(writePath, "utf8")));
+          const map = config?.[mapKey];
+          if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+          let modified = false;
+          for (const name of record.installedPlugins) {
+            if (isPrototypePollutionKey(name)) continue;
+            if (Object.hasOwn(map, name)) {
+              delete map[name];
+              modified = true;
+              if (!removedPlugins.includes(name)) removedPlugins.push(name);
+            }
+          }
+          if (modified) atomicWriteFileSync(writePath, JSON.stringify(config, null, 2) + "\n");
+        } catch {
+          // Ignore parse errors on uninstall
         }
       }
     }

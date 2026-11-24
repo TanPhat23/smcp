@@ -17,14 +17,20 @@ export function filterAgents(
     return agents;
   }
 
-  return agents.filter((agent) => {
-    const id = agent.id.toLowerCase();
-    const name = agent.name.toLowerCase();
-    return terms.some((term) => {
-      if (id === term || name === term) return true;
-      if (term === "claude" && (id.startsWith("claude-") || id === "claude")) return true;
-      if (term === "opencode" && id === "opencode") return true;
-      return id.includes(term) || name.includes(term);
-    });
+  return agents.filter((agent) => agentMatchesTerm(agent.id, agent.name, terms));
+}
+
+/**
+ * True when any (lowercased) term selects the agent. The bare term "claude"
+ * means Claude Code only; Claude Desktop must be named explicitly.
+ */
+export function agentMatchesTerm(agentId: string, agentName: string, terms: string[]): boolean {
+  const id = agentId.toLowerCase();
+  const name = agentName.toLowerCase();
+  return terms.some((term) => {
+    if (id === term || name === term) return true;
+    if (term === "claude") return id === "claude" || id === "claude-code";
+    if (term === "opencode") return id === "opencode";
+    return id.includes(term) || name.includes(term);
   });
 }

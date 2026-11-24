@@ -96,9 +96,9 @@ describe("Security & Hardening Test Suite", () => {
 
       // Map format
       const mapPath = path.join(tmpDir, "plugins-map.json");
-      mergePluginsIntoFile(mapPath, ["__proto__", "constructor", "prototype", "safe-map-plugin"], "enabledPlugins", "map");
+      mergePluginsIntoFile(mapPath, ["__proto__", "constructor", "prototype", "safe-map-plugin@market"], "enabledPlugins", "map");
       parsed = JSON.parse(fs.readFileSync(mapPath, "utf8"));
-      expect(parsed.enabledPlugins["safe-map-plugin"]).toBe(true);
+      expect(parsed.enabledPlugins["safe-map-plugin@market"]).toBe(true);
       expect(Object.hasOwn(parsed.enabledPlugins, "__proto__")).toBe(false);
       expect(Object.hasOwn(parsed.enabledPlugins, "constructor")).toBe(false);
     });

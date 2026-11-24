@@ -39,8 +39,8 @@ describe("Agent Profiles & Installer", () => {
     expect(profiles.opencode.agents?.paths).toContain("./.opencode/agents");
 
     expect(profiles["claude-code"].agents).toBeDefined();
-    expect(profiles["claude-code"].agents?.paths).toContain("~/.claude/commands");
-    expect(profiles["claude-code"].agents?.paths).toContain("./.claude/commands");
+    expect(profiles["claude-code"].agents?.paths).toContain("~/.claude/agents");
+    expect(profiles["claude-code"].agents?.paths).toContain("./.claude/agents");
 
     expect(profiles.cursor.agents).toBeNull();
     expect(profiles.windsurf.agents).toBeNull();
@@ -71,9 +71,9 @@ describe("Agent Profiles & Installer", () => {
     const sampleAgent: UniversalAgent = {
       name: "safe-name",
       description: "Adversarial reviewer",
-      claude: { command: "../../escaped-cmd" },
       prompt: "Malicious command."
     };
+    sampleAgent.name = "../../escaped-cmd";
 
     const res = installAgentFiles(tmp, sampleAgent, "claude-code");
     // Should be sanitized to escaped-cmd.md inside tmp, not outside

@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  agentMatchesTerm,
   collectRequiredEnv,
   detectAgents,
   detectAvailableRuntime,
@@ -98,15 +99,9 @@ export async function installCommand(
       .flatMap((a) => a.split(","))
       .map((a) => a.trim().toLowerCase())
       .filter(Boolean);
-    targetAgentIds = Object.keys(allProfiles).filter((id) => {
-      const profName = allProfiles[id].name.toLowerCase();
-      return rawList.some((t) => {
-        if (id.toLowerCase() === t || profName === t) return true;
-        if (t === "claude" && (id.startsWith("claude-") || id === "claude")) return true;
-        if (t === "opencode" && id === "opencode") return true;
-        return id.toLowerCase().includes(t) || profName.includes(t);
-      });
-    });
+    targetAgentIds = Object.keys(allProfiles).filter((id) =>
+      agentMatchesTerm(id, allProfiles[id].name, rawList)
+    );
     if (targetAgentIds.length === 0) {
       const errMsg = "None of the specified target agents were recognized.";
       if (isAgentMode) {

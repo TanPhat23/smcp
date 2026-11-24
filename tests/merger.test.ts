@@ -325,19 +325,17 @@ describe("Config Merger (mergeMcpServersIntoFile)", () => {
     expect(content.mcpServers.freshServer).toEqual({ command: "uvx", args: ["mcp-server"] });
   });
 
-  it("recovers gracefully from malformed/corrupt JSON in existing file and creates clean config", () => {
+  it("aborts on malformed/corrupt JSON in existing file without modifying it", () => {
     const configPath = path.join(testDir, "corrupt.json");
     fs.writeFileSync(configPath, "{ invalid json content !!!", "utf8");
 
-    mergeMcpServersIntoFile(configPath, {
-      recoveredServer: { command: "node", args: ["recovered.js"] }
-    });
+    expect(() =>
+      mergeMcpServersIntoFile(configPath, {
+        recoveredServer: { command: "node", args: ["recovered.js"] }
+      })
+    ).toThrow(/not valid JSON/);
 
-    const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    expect(updated.mcpServers.recoveredServer).toEqual({
-      command: "node",
-      args: ["recovered.js"]
-    });
+    expect(fs.readFileSync(configPath, "utf8")).toBe("{ invalid json content !!!");
   });
 
   it("recovers gracefully from empty file or non-object JSON values", () => {
@@ -540,27 +538,19 @@ describe("Config Merger (mergeMcpServersIntoFile)", () => {
     });
   });
 
-  it("creates a backup file (.bak.) when existing config has corrupt/malformed JSON", () => {
+  it("does not create a backup or rewrite when existing config is corrupt", () => {
     const configPath = path.join(testDir, "corrupted-test.json");
     const corruptContent = "{ this is completely broken json !!!";
     fs.writeFileSync(configPath, corruptContent, "utf8");
 
-    mergeMcpServersIntoFile(configPath, {
-      recovered: { command: "node", args: ["recovered.js"] }
-    });
+    expect(() =>
+      mergeMcpServersIntoFile(configPath, {
+        recovered: { command: "node", args: ["recovered.js"] }
+      })
+    ).toThrow(/Refusing to modify/);
 
-    const dirFiles = fs.readdirSync(testDir);
-    const backupFiles = dirFiles.filter((f) => f.startsWith("corrupted-test.json.bak."));
-    expect(backupFiles.length).toBe(1);
-
-    const backupContent = fs.readFileSync(path.join(testDir, backupFiles[0]), "utf8");
-    expect(backupContent).toBe(corruptContent);
-
-    const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    expect(updated.mcpServers.recovered).toEqual({
-      command: "node",
-      args: ["recovered.js"]
-    });
+    expect(fs.readdirSync(testDir).filter((f) => f.startsWith("corrupted-test.json.bak.")).length).toBe(0);
+    expect(fs.readFileSync(configPath, "utf8")).toBe(corruptContent);
   });
 
   it("guards against newServers being an array", () => {
@@ -957,14 +947,14 @@ describe("Plugins Merger & File Installer", () => {
 
     mergePluginsIntoFile(
       configPath,
-      ["__proto__", "constructor", "prototype", "valid-plugin"],
+      ["__proto__", "constructor", "prototype", "valid-plugin@market"],
       "enabledPlugins",
       "map"
     );
 
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
-    expect(parsed.enabledPlugins["valid-plugin"]).toBe(true);
+    expect(parsed.enabledPlugins["valid-plugin@market"]).toBe(true);
     expect(Object.hasOwn(parsed.enabledPlugins, "__proto__")).toBe(false);
     expect(Object.hasOwn(parsed.enabledPlugins, "constructor")).toBe(false);
     expect(Object.hasOwn(parsed.enabledPlugins, "prototype")).toBe(false);
@@ -979,14 +969,20 @@ describe("Plugins Merger & File Installer", () => {
     expect(parsed.plugin).toEqual(["created-plugin"]);
   });
 
-  it("mergePluginsIntoFile recovers gracefully from corrupt existing JSON", () => {
+  it("mergePluginsIntoFile aborts on corrupt existing JSON without modifying it", () => {
     const configPath = path.join(testDir, "corrupt.json");
     fs.writeFileSync(configPath, "{ not valid json @@@", "utf8");
 
-    mergePluginsIntoFile(configPath, ["recovered-plugin"], "plugin", "array");
+    expect(() => mergePluginsIntoFile(configPath, ["recovered-plugin"], "plugin", "array")).toThrow(/not valid JSON/);
+    expect(fs.readFileSync(configPath, "utf8")).toBe("{ not valid json @@@");
+  });
 
+  it("mergePluginsIntoFile map format skips bare names that lack a @marketplace suffix", () => {
+    const configPath = path.join(testDir, "claude-settings.json");
+    fs.writeFileSync(configPath, JSON.stringify({ enabledPlugins: {} }), "utf8");
+    mergePluginsIntoFile(configPath, ["bare", "ctx@claude-plugins-official"], "enabledPlugins", "map");
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    expect(parsed.plugin).toEqual(["recovered-plugin"]);
+    expect(parsed.enabledPlugins).toEqual({ "ctx@claude-plugins-official": true });
   });
 
   it("installPluginFiles validates targetDir and handles empty/null files safely", () => {

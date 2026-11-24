@@ -86,11 +86,13 @@ export function mergeMcpServersIntoFile(
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         config = parsed;
       }
-    } catch {
+    } catch (err) {
       if (raw.trim().length > 0) {
-        const backupPath = `${resolvedPath}.bak.${Date.now()}`;
-        fs.writeFileSync(backupPath, raw, "utf8");
-        console.warn(`Warning: Corrupted config at ${resolvedPath} was backed up to ${backupPath}`);
+        // Never overwrite a config we cannot parse: it may be half-written by
+        // the agent itself and holds unrelated state (auth, projects, ...).
+        throw new Error(
+          `Refusing to modify ${resolvedPath}: file is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix or remove it and retry.`
+        );
       }
       config = {};
     }

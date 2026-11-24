@@ -56,31 +56,33 @@ export function readInstalledMcpServers(
         if (mcpServersVal && typeof mcpServersVal === "object" && !Array.isArray(mcpServersVal)) {
           servers = mcpServersVal;
         }
-      } else if (Object.hasOwn(json, "projects")) {
-        // Check Claude Code projects in ~/.claude.json
-        const projects = (json as Record<string, unknown>).projects;
-        if (projects && typeof projects === "object" && !Array.isArray(projects)) {
-          const cwd = process.cwd();
-          const home = os.homedir();
-          const projectMap = projects as Record<string, Record<string, unknown>>;
-          const combined: Record<string, unknown> = {};
+      }
+    }
 
-          if (projectMap[cwd]?.mcpServers && typeof projectMap[cwd].mcpServers === "object") {
-            Object.assign(combined, projectMap[cwd].mcpServers);
+    // Claude Code keeps per-project servers under projects[<abs path>].mcpServers
+    // in ~/.claude.json. Surface them next to the user-level servers instead of
+    // only when the top-level key is missing.
+    if (key === "mcpServers" && Object.hasOwn(json, "projects")) {
+      const projects = (json as Record<string, unknown>).projects;
+      if (projects && typeof projects === "object" && !Array.isArray(projects)) {
+        const projectMap = projects as Record<string, Record<string, unknown>>;
+        const asServers = (v: unknown): Record<string, unknown> =>
+          v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+        const hasTopLevel =
+          servers && typeof servers === "object" && !Array.isArray(servers) && Object.keys(servers).length > 0;
+        const scoped: Record<string, unknown> = {};
+        for (const dir of [os.homedir(), process.cwd()]) {
+          if (Object.hasOwn(projectMap, dir) && projectMap[dir] && typeof projectMap[dir] === "object") {
+            Object.assign(scoped, asServers(projectMap[dir].mcpServers));
           }
-          if (projectMap[home]?.mcpServers && typeof projectMap[home].mcpServers === "object") {
-            Object.assign(combined, projectMap[home].mcpServers);
+        }
+        if (!hasTopLevel && Object.keys(scoped).length === 0) {
+          for (const proj of Object.values(projectMap)) {
+            if (proj && typeof proj === "object") Object.assign(scoped, asServers(proj.mcpServers));
           }
-          if (Object.keys(combined).length === 0) {
-            for (const proj of Object.values(projectMap)) {
-              if (proj && typeof proj === "object" && proj.mcpServers && typeof proj.mcpServers === "object") {
-                Object.assign(combined, proj.mcpServers);
-              }
-            }
-          }
-          if (Object.keys(combined).length > 0) {
-            servers = combined;
-          }
+        }
+        if (Object.keys(scoped).length > 0) {
+          servers = { ...(hasTopLevel ? (servers as Record<string, unknown>) : {}), ...scoped };
         }
       }
     }

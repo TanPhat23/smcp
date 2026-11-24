@@ -62,24 +62,25 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
   "claude-code": {
     name: "Claude Code",
     mcpConfig: {
-      paths: ["~/.claude.json", "./.claude.json"],
+      paths: ["~/.claude.json", "./.mcp.json"],
       key: "mcpServers"
     },
     skills: {
-      paths: ["~/.claude/skills", "./skills"]
+      paths: ["~/.claude/skills", "./.claude/skills"]
     },
     plugins: {
       paths: [
         "~/.claude/settings.json",
-        "~/.claude/settings.local.json"
+        "./.claude/settings.json",
+        "./.claude/settings.local.json"
       ],
       key: "enabledPlugins",
       format: "map"
     },
     agents: {
       paths: [
-        "~/.claude/commands",
-        "./.claude/commands"
+        "~/.claude/agents",
+        "./.claude/agents"
       ],
       format: "markdown"
     }
