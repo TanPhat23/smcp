@@ -3,11 +3,14 @@ import path from "node:path";
 import {
   McpServerConfigSchema,
   parseAgentMarkdown,
+  readInstalledHooks,
+  scanRules,
   scanSkills,
   type AgentEntry,
   type Manifest,
   type McpServerConfig,
   type PluginEntry,
+  type RuleEntry,
   type SkillEntry,
   type UniversalAgent,
   isStrictlyInside
@@ -24,6 +27,8 @@ export interface DiscoveredPackComponents {
   skills?: SkillEntry[];
   plugins?: PluginEntry[];
   agents?: DiscoveredAgent[];
+  rules?: RuleEntry[];
+  hooks?: Record<string, unknown>;
 }
 
 /**
@@ -181,6 +186,25 @@ export function discoverPackComponents(baseDir: string): DiscoveredPackComponent
       if (err instanceof Error && err.message.includes("frontmatter")) {
         throw err;
       }
+    }
+  }
+
+  // 5. Discover rules/ (and top-level GEMINI.md / AGENTS.md)
+  const discoveredRules = scanRules([
+    path.join(root, "GEMINI.md"),
+    path.join(root, "AGENTS.md"),
+    path.join(root, "rules")
+  ]);
+  if (discoveredRules.length > 0) {
+    result.rules = discoveredRules;
+  }
+
+  // 6. Discover hooks/hooks.json or hooks.json
+  for (const hookRel of [path.join("hooks", "hooks.json"), "hooks.json"]) {
+    const hookMap = readInstalledHooks(path.join(root, hookRel));
+    if (Object.keys(hookMap).length > 0) {
+      result.hooks = hookMap;
+      break;
     }
   }
 

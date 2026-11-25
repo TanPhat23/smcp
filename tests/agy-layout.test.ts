@@ -9,15 +9,20 @@ import {
   compileAgentForHarness,
   detectAgents,
   filterAgents,
+  readInstalledHooks,
   readInstalledMcpServers,
   readInstalledPlugins,
-  scanAgents
+  scanAgents,
+  scanRules,
+  scanSkills
 } from "../packages/core/src/core/agents/index.ts";
 import {
   StandardMcpAdapter,
+  mergeHooksIntoFile,
   mergeMcpServersIntoFile,
   uninstallPackFromAgents
 } from "../packages/core/src/core/merger/index.ts";
+import { packDirectory } from "../packages/cli/src/commands/pack/pack.ts";
 import type { AgentProfile, Manifest } from "../packages/core/src/types/index.ts";
 
 function sandboxAgyProfile(baseDir: string, scope: "global" | "project"): Record<string, AgentProfile> {
@@ -422,5 +427,210 @@ describe("Antigravity (agy) on-disk layout & lifecycle", () => {
     mergeMcpServersIntoFile(mcpPath, { grep: { url: "https://mcp.grep.app" } }, { agentId: "agy" });
     const parsed = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
     expect(parsed.mcpServers.grep).toEqual({ url: "https://mcp.grep.app" });
+  });
+
+  it("normalizes gemini-extension httpUrl and includes legacy & _agents/_agent paths in DEFAULT_AGENTS.agy", () => {
+    expect(DEFAULT_AGENTS.agy.mcpConfig?.paths).toContain("~/.gemini/antigravity/mcp_config.json");
+    expect(DEFAULT_AGENTS.agy.mcpConfig?.paths).toContain("./.agent/mcp_config.json");
+    expect(DEFAULT_AGENTS.agy.mcpConfig?.paths).toContain("./_agents/mcp_config.json");
+    expect(DEFAULT_AGENTS.agy.rules?.paths).toContain("~/.gemini/GEMINI.md");
+    expect(DEFAULT_AGENTS.agy.rules?.paths).toContain("./.agents/rules");
+    expect(DEFAULT_AGENTS.agy.hooks?.paths).toContain("~/.gemini/config/hooks.json");
+
+    const extMcp = path.join(home, "ext-mcp.json");
+    fs.writeFileSync(
+      extMcp,
+      JSON.stringify({
+        mcpServers: {
+          mobbin: { httpUrl: "https://api.mobbin.com/mcp" }
+        }
+      })
+    );
+    const servers = readInstalledMcpServers(extMcp, "mcpServers");
+    expect(servers.mobbin.url).toBe("https://api.mobbin.com/mcp");
+    expect((servers.mobbin as Record<string, unknown>).httpUrl).toBeUndefined();
+  });
+
+  it("resolves Antigravity skills.json and plugins.json entries, inherits, include_only, and exclude", () => {
+    const configRoot = path.join(home, ".gemini", "config");
+    const primarySkills = path.join(configRoot, "skills");
+    const sharedSkills = path.join(home, "shared-skills");
+    const extraPlugins = path.join(home, "extra-plugins");
+    fs.mkdirSync(path.join(sharedSkills, "kept-skill"), { recursive: true });
+    fs.mkdirSync(path.join(sharedSkills, "skipped-skill"), { recursive: true });
+    fs.mkdirSync(path.join(extraPlugins, "kept-plugin"), { recursive: true });
+    fs.mkdirSync(path.join(extraPlugins, "excluded-plugin"), { recursive: true });
+
+    fs.writeFileSync(path.join(sharedSkills, "kept-skill", "SKILL.md"), "---\nname: kept-skill\n---\nKept");
+    fs.writeFileSync(path.join(sharedSkills, "skipped-skill", "SKILL.md"), "---\nname: skipped-skill\n---\nSkipped");
+    fs.writeFileSync(path.join(extraPlugins, "kept-plugin", "plugin.json"), JSON.stringify({ name: "kept-plugin" }));
+    fs.writeFileSync(path.join(extraPlugins, "excluded-plugin", "plugin.json"), JSON.stringify({ name: "excluded-plugin" }));
+
+    const inheritedSkillsJson = path.join(home, "inherited-skills.json");
+    fs.writeFileSync(
+      inheritedSkillsJson,
+      JSON.stringify({
+        entries: [{ path: sharedSkills, include_only: ["kept-skill"] }]
+      })
+    );
+    fs.mkdirSync(configRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(configRoot, "skills.json"),
+      JSON.stringify({
+        inherits: [{ path: inheritedSkillsJson }]
+      })
+    );
+    fs.writeFileSync(
+      path.join(configRoot, "plugins.json"),
+      JSON.stringify({
+        entries: [{ path: extraPlugins, exclude: ["excluded-.*"] }]
+      })
+    );
+
+    const skills = scanSkills(primarySkills);
+    expect(skills.map((s) => s.name)).toEqual(["kept-skill"]);
+
+    const plugins = readInstalledPlugins("", "plugins", "directory", [path.join(configRoot, "plugins")], "agy");
+    expect(plugins.map((p) => p.name)).toEqual(["kept-plugin"]);
+  });
+
+  it("scans, packs, installs, merges, and uninstalls Antigravity rules and standalone hooks.json", async () => {
+    const configRoot = path.join(home, ".gemini", "config");
+    const rulesDir = path.join(home, "workspace", ".agents", "rules");
+    fs.mkdirSync(configRoot, { recursive: true });
+    fs.mkdirSync(rulesDir, { recursive: true });
+
+    const geminiRule = path.join(home, ".gemini", "GEMINI.md");
+    fs.writeFileSync(geminiRule, "# Global Rule\nAlways verify.");
+    fs.writeFileSync(path.join(rulesDir, "style.md"), "# Style Rule\nStrict TS.");
+    fs.writeFileSync(
+      path.join(configRoot, "hooks.json"),
+      JSON.stringify({
+        "lint-checker": {
+          PostToolUse: [{ matcher: "run_command", hooks: [{ type: "command", command: "./lint.sh" }] }]
+        }
+      })
+    );
+
+    const scannedRules = scanRules([geminiRule, rulesDir, path.join(rulesDir, "style.md")]);
+    expect(scannedRules.map((r) => r.name)).toEqual(["GEMINI", "style"]);
+
+    const installedHooks = readInstalledHooks(path.join(configRoot, "hooks.json"));
+    expect(installedHooks["lint-checker"]).toBeDefined();
+
+    // Test merging hooks preserves existing hooks
+    const destHooksPath = path.join(proj, ".agents", "hooks.json");
+    fs.mkdirSync(path.dirname(destHooksPath), { recursive: true });
+    fs.writeFileSync(destHooksPath, JSON.stringify({ "user-hook": { PreToolUse: [] } }));
+    const merged = mergeHooksIntoFile(destHooksPath, installedHooks);
+    expect(merged).toEqual(["lint-checker"]);
+    const afterMerge = JSON.parse(fs.readFileSync(destHooksPath, "utf8"));
+    expect(afterMerge["user-hook"]).toBeDefined();
+    expect(afterMerge["lint-checker"]).toBeDefined();
+
+    // Test packing and installing + uninstalling rules & hooks into sandbox agy profile
+    const packSrc = path.join(home, "pack-src");
+    fs.mkdirSync(path.join(packSrc, "rules"), { recursive: true });
+    fs.mkdirSync(path.join(packSrc, "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(packSrc, "rules", "safety.md"), "# Safety Rule\nBe careful.");
+    fs.writeFileSync(
+      path.join(packSrc, "hooks", "hooks.json"),
+      JSON.stringify({ "pack-hook": { Stop: [{ command: "echo done" }] } })
+    );
+    const packed = await packDirectory(packSrc, { name: "rules-hooks-pack" });
+    expect(packed.manifest.rules?.map((r) => r.name)).toEqual(["safety"]);
+    expect(packed.manifest.hooks?.["pack-hook"]).toBeDefined();
+
+    const agyProfile: Record<string, AgentProfile> = {
+      agy: {
+        name: "Antigravity",
+        mcpConfig: { paths: [path.join(proj, ".agents", "mcp_config.json")], key: "mcpServers" },
+        skills: { paths: [path.join(proj, ".agents", "skills")] },
+        rules: { paths: [path.join(proj, ".agents", "rules")] },
+        hooks: { paths: [path.join(proj, ".agents", "hooks.json")] }
+      }
+    };
+
+    const installRes = installPackIntoAgents(
+      packed.manifest,
+      ["agy"],
+      {},
+      packed.rawFiles,
+      packSrc,
+      agyProfile,
+      undefined,
+      undefined,
+      "project"
+    );
+    expect(installRes.installedRules).toEqual(["safety"]);
+    expect(installRes.installedHooks).toEqual(["pack-hook"]);
+    expect(fs.existsSync(path.join(proj, ".agents", "rules", "safety.md"))).toBe(true);
+
+    const uninstallRes = uninstallPackFromAgents(
+      {
+        name: "rules-hooks-pack",
+        source: packSrc,
+        version: "1.0.0",
+        targetAgents: ["agy"],
+        installedMcp: [],
+        installedSkills: [],
+        installedPlugins: [],
+        installedRules: installRes.installedRules,
+        installedHooks: installRes.installedHooks,
+        installedAt: new Date().toISOString()
+      },
+      agyProfile
+    );
+    expect(uninstallRes.removedRules).toEqual(["safety"]);
+    expect(uninstallRes.removedHooks).toEqual(["pack-hook"]);
+    expect(fs.existsSync(path.join(proj, ".agents", "rules", "safety.md"))).toBe(false);
+    const remainingHooks = JSON.parse(fs.readFileSync(destHooksPath, "utf8"));
+    expect(remainingHooks["user-hook"]).toBeDefined();
+    expect(remainingHooks["pack-hook"]).toBeUndefined();
+  });
+
+  it("extracts MCP servers, skills, and subagents from Antigravity directory plugins when installing into non-directory agents", () => {
+    const claudeMcp = path.join(home, ".claude.json");
+    const claudeSkills = path.join(home, ".claude", "skills");
+    const claudeAgents = path.join(home, ".claude", "agents");
+    const profiles: Record<string, AgentProfile> = {
+      "claude-code": {
+        name: "Claude Code",
+        mcpConfig: { paths: [claudeMcp], key: "mcpServers" },
+        skills: { paths: [claudeSkills] },
+        plugins: { paths: [path.join(home, ".claude", "settings.json")], key: "enabledPlugins", format: "map" },
+        agents: { paths: [claudeAgents], format: "markdown" }
+      }
+    };
+
+    const m = manifest({
+      plugins: [
+        {
+          name: "mobbin",
+          targetAgent: "agy",
+          files: {
+            "plugin.json": JSON.stringify({ name: "mobbin" }),
+            "gemini-extension.json": JSON.stringify({
+              name: "mobbin",
+              mcpServers: {
+                mobbin: { httpUrl: "https://api.mobbin.com/mcp" }
+              }
+            }),
+            "skills/redesign/SKILL.md": "---\nname: redesign\ndescription: Redesign screen\n---\nInstructions",
+            "agents/reviewer.md": "---\nname: reviewer\ndescription: Design reviewer\nmode: subagent\n---\nReview UI."
+          }
+        }
+      ]
+    });
+
+    installPackIntoAgents(m, ["claude-code"], {}, undefined, undefined, profiles, undefined, undefined, "global");
+
+    const mcpParsed = JSON.parse(fs.readFileSync(claudeMcp, "utf8"));
+    expect(mcpParsed.mcpServers.mobbin).toEqual({
+      url: "https://api.mobbin.com/mcp",
+      type: "http"
+    });
+    expect(fs.existsSync(path.join(claudeSkills, "redesign", "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(claudeAgents, "reviewer.md"))).toBe(true);
   });
 });

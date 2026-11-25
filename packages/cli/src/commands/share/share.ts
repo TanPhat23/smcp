@@ -7,21 +7,29 @@ import {
   filterAgents,
   getAgentProfiles,
   getSharesHistory,
+  readInstalledHooks,
   readInstalledMcpServers,
   readInstalledPlugins,
   redactMcpServers,
   scanAgents,
+  scanRules,
   scanSkills,
   triggerHook,
   type Manifest,
   type McpServerConfig,
   type PluginEntry,
+  type RuleEntry,
   type ScannedAgentEntry,
   type ShareCommandOptions,
   type ShareRecord,
   type SkillEntry
 } from "@tanphat/smcp-core";
-import { bundleAgentFilesForShare, bundlePluginFiles, bundleSkillFiles } from "./bundle.ts";
+import {
+  bundleAgentFilesForShare,
+  bundlePluginFiles,
+  bundleRuleFilesForShare,
+  bundleSkillFiles
+} from "./bundle.ts";
 import { getAllShareProviders, getShareProvider } from "./providers/index.ts";
 
 export type { ShareCommandOptions } from "@tanphat/smcp-core";
@@ -176,14 +184,39 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     }
   }
 
+  // 2d. Collect all available rules & hooks
+  const availableRules: RuleEntry[] = [];
+  const availableHooks: Record<string, unknown> = {};
+  for (const agent of agents) {
+    if (agent.rulesPaths && agent.rulesPaths.length > 0) {
+      for (const r of scanRules(agent.rulesPaths)) {
+        if (!availableRules.some((existing) => existing.name === r.name)) {
+          availableRules.push(r);
+        }
+      }
+    }
+    if (agent.hooksConfigPath) {
+      const profile = profiles[agent.id];
+      const hookMap = readInstalledHooks(agent.hooksConfigPath, profile?.hooks?.key);
+      for (const [hName, hDef] of Object.entries(hookMap)) {
+        if (!Object.hasOwn(availableHooks, hName)) {
+          availableHooks[hName] = hDef;
+        }
+      }
+    }
+  }
+
   const serverNames = Object.keys(availableServers);
+  const hookNames = Object.keys(availableHooks);
   if (
     serverNames.length === 0 &&
     availableSkills.length === 0 &&
     availablePlugins.length === 0 &&
-    availableAgents.length === 0
+    availableAgents.length === 0 &&
+    availableRules.length === 0 &&
+    hookNames.length === 0
   ) {
-    const errMsg = "No MCP servers, skills, plugins, or agents found to share.";
+    const errMsg = "No MCP servers, skills, plugins, agents, rules, or hooks found to share.";
     if (isAgentMode) {
       console.error(JSON.stringify({ success: false, error: errMsg }));
     } else {
@@ -323,11 +356,71 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     selectedAgents = availableAgents.filter((ag) => pickedNames.includes(ag.name));
   }
 
+  // 4d. Select rules
+  let selectedRules: RuleEntry[] = [];
+  if (options?.rules !== undefined && Array.isArray(options.rules)) {
+    selectedRules = availableRules.filter((r) => options.rules?.includes(r.name));
+  } else if (isNonInteractive && availableRules.length > 0) {
+    selectedRules = [...availableRules];
+  } else if (availableRules.length > 0) {
+    const picked = await p.groupMultiselect({
+      message: "Select Rules to include:",
+      options: {
+        "Select all / Deselect all": availableRules.map((r) => ({
+          value: r.name,
+          label: r.name,
+          hint: r.path
+        }))
+      },
+      required: false
+    });
+    if (p.isCancel(picked)) {
+      p.cancel("Operation cancelled.");
+      return;
+    }
+    const pickedNames = picked as string[];
+    selectedRules = availableRules.filter((r) => pickedNames.includes(r.name));
+  }
+
+  // 4e. Select hooks
+  const selectedHooks: Record<string, unknown> = {};
+  if (options?.hooks !== undefined && Array.isArray(options.hooks)) {
+    for (const hName of options.hooks) {
+      if (Object.hasOwn(availableHooks, hName)) {
+        selectedHooks[hName] = availableHooks[hName];
+      }
+    }
+  } else if (isNonInteractive && hookNames.length > 0) {
+    Object.assign(selectedHooks, availableHooks);
+  } else if (hookNames.length > 0) {
+    const picked = await p.groupMultiselect({
+      message: "Select Hooks to include:",
+      options: {
+        "Select all / Deselect all": hookNames.map((hName) => ({
+          value: hName,
+          label: hName
+        }))
+      },
+      required: false
+    });
+    if (p.isCancel(picked)) {
+      p.cancel("Operation cancelled.");
+      return;
+    }
+    for (const hName of picked as string[]) {
+      if (Object.hasOwn(availableHooks, hName)) {
+        selectedHooks[hName] = availableHooks[hName];
+      }
+    }
+  }
+
   if (
     Object.keys(selectedServers).length === 0 &&
     selectedSkills.length === 0 &&
     selectedPlugins.length === 0 &&
-    selectedAgents.length === 0
+    selectedAgents.length === 0 &&
+    selectedRules.length === 0 &&
+    Object.keys(selectedHooks).length === 0
   ) {
     const errMsg = "No items selected.";
     if (isAgentMode) {
@@ -631,14 +724,25 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     }
   }
 
-  // 8. Bundle skill & plugin files
+  // 8. Bundle skill, plugin, agent, rule, and hook files
   const { bundledSkills, gistFiles: skillGistFiles } = bundleSkillFiles(selectedSkills);
   const { bundledPlugins, gistFiles: pluginGistFiles } = await bundlePluginFiles(selectedPlugins);
   const { bundledAgents, gistFiles: agentGistFiles } = bundleAgentFilesForShare(selectedAgents);
-  const gistFiles: Record<string, { content: string }> = { ...skillGistFiles, ...pluginGistFiles, ...agentGistFiles };
+  const { bundledRules, gistFiles: ruleGistFiles } = bundleRuleFilesForShare(selectedRules);
+  const gistFiles: Record<string, { content: string }> = {
+    ...skillGistFiles,
+    ...pluginGistFiles,
+    ...agentGistFiles,
+    ...ruleGistFiles
+  };
   if (Object.keys(redactedServers).length > 0) {
     gistFiles["mcp.json"] = {
       content: JSON.stringify({ mcpServers: redactedServers }, null, 2) + "\n"
+    };
+  }
+  if (Object.keys(selectedHooks).length > 0) {
+    gistFiles["hooks.json"] = {
+      content: JSON.stringify(selectedHooks, null, 2) + "\n"
     };
   }
 
@@ -659,6 +763,8 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
       mode: ag.mode,
       model: ag.model
     })),
+    ...(bundledRules.length > 0 ? { rules: bundledRules } : {}),
+    ...(Object.keys(selectedHooks).length > 0 ? { hooks: selectedHooks } : {}),
     requiredEnv
   };
 
@@ -704,11 +810,15 @@ export async function shareCommand(options?: ShareCommandOptions): Promise<void>
     bundledSkills,
     bundledPlugins,
     bundledAgents,
+    bundledRules,
+    bundledHooks: selectedHooks,
     redactedServers,
     selectedServers,
     selectedSkills,
     selectedPlugins,
     selectedAgents,
+    selectedRules,
+    selectedHooks,
     gistFiles,
     options,
     isNonInteractive,

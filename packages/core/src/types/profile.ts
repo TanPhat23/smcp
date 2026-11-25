@@ -31,6 +31,19 @@ export const AgentProfileSchema = z.object({
       format: z.string().optional()
     })
     .nullable()
+    .optional(),
+  rules: z
+    .object({
+      paths: z.array(z.string())
+    })
+    .nullable()
+    .optional(),
+  hooks: z
+    .object({
+      paths: z.array(z.string()),
+      key: z.string().optional()
+    })
+    .nullable()
     .optional()
 });
 

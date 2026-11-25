@@ -59,6 +59,17 @@ export function selectRelevantRepoBlobs<T extends RepoBlobDescriptor>(
       return !manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0;
     }
 
+    if (rel.startsWith("rules/")) {
+      const hasInlineRules =
+        (manifest.rules || []).length > 0 &&
+        (manifest.rules || []).every((r) => typeof r.content === "string" && r.content.length > 0);
+      return !hasInlineRules;
+    }
+
+    if (rel === "hooks/hooks.json" || rel === "hooks.json") {
+      return !manifest.hooks || Object.keys(manifest.hooks).length === 0;
+    }
+
     return rel.startsWith("agents/") || rel.endsWith(".md") || rel.endsWith(".json");
   });
 }

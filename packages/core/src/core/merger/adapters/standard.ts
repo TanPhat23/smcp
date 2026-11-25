@@ -47,11 +47,18 @@ function normalizeCommandAndArgs(
 }
 
 function normalizeRemoteUrl(target: Record<string, unknown>): void {
-  if (typeof target.serverUrl === "string" && target.serverUrl.trim()) {
+  const rawAlias =
+    typeof target.serverUrl === "string" && target.serverUrl.trim()
+      ? target.serverUrl.trim()
+      : typeof target.httpUrl === "string" && target.httpUrl.trim()
+      ? target.httpUrl.trim()
+      : undefined;
+  if (rawAlias) {
     if (typeof target.url !== "string" || !target.url.trim()) {
-      target.url = target.serverUrl.trim();
+      target.url = rawAlias;
     }
     delete target.serverUrl;
+    delete target.httpUrl;
   }
 }
 

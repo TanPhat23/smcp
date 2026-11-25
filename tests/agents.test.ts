@@ -44,6 +44,8 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(opencode.mcpConfig?.paths).toContain("./opencode.json");
     expect(opencode.skills?.paths).toContain("~/.config/opencode/skills");
     expect(opencode.skills?.paths).toContain("./.opencode/skills");
+    expect(opencode.rules?.paths).toEqual(["~/.config/opencode/AGENTS.md", "./AGENTS.md"]);
+    expect(opencode.hooks).toBeNull();
   });
 
   it("validates Claude Code profile paths and keys", () => {
@@ -58,6 +60,18 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(claudeCode.plugins?.paths).toContain("./.claude/settings.json");
     expect(claudeCode.plugins?.paths).toContain("./.claude/settings.local.json");
     expect(claudeCode.agents?.paths).toEqual(["~/.claude/agents", "./.claude/agents"]);
+    expect(claudeCode.rules?.paths).toEqual([
+      "~/.claude/CLAUDE.md",
+      "~/.claude/rules",
+      "./CLAUDE.md",
+      "./.claude/rules"
+    ]);
+    expect(claudeCode.hooks?.paths).toEqual([
+      "~/.claude/settings.json",
+      "./.claude/settings.json",
+      "./.claude/settings.local.json"
+    ]);
+    expect(claudeCode.hooks?.key).toBe("hooks");
   });
 
   it("validates Claude Desktop profile paths, key, and null skills", () => {
@@ -68,6 +82,8 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(desktop.mcpConfig?.paths).toContain("~/Library/Application Support/Claude/claude_desktop_config.json");
     expect(desktop.mcpConfig?.paths).toContain("%APPDATA%/Claude/claude_desktop_config.json");
     expect(desktop.skills).toBeNull();
+    expect(desktop.rules).toBeNull();
+    expect(desktop.hooks).toBeNull();
   });
 
   it("validates Cursor profile paths and keys", () => {
@@ -78,6 +94,8 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(cursor.mcpConfig?.paths).toContain("./.cursor/mcp.json");
     expect(cursor.skills?.paths).toContain("~/.cursor/skills");
     expect(cursor.skills?.paths).toContain("./.cursor/rules");
+    expect(cursor.rules?.paths).toEqual(["./.cursor/rules", "./.cursorrules", "./AGENTS.md"]);
+    expect(cursor.hooks).toBeNull();
   });
 
   it("validates Windsurf profile paths and keys", () => {
@@ -86,6 +104,12 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(windsurf.mcpConfig?.key).toBe("mcpServers");
     expect(windsurf.mcpConfig?.paths).toContain("~/.codeium/windsurf/mcp_config.json");
     expect(windsurf.skills?.paths).toContain("~/.codeium/windsurf/skills");
+    expect(windsurf.rules?.paths).toEqual([
+      "~/.codeium/windsurf/memories/global_rules.md",
+      "./.windsurfrules",
+      "./.windsurf/rules"
+    ]);
+    expect(windsurf.hooks).toBeNull();
   });
 
   it("validates Antigravity (agy) profile paths and keys", () => {
@@ -94,23 +118,49 @@ describe("Agent Profiles Registry & Default Agents", () => {
     expect(agy.mcpConfig?.key).toBe("mcpServers");
     expect(agy.mcpConfig?.paths).toEqual([
       "~/.gemini/config/mcp_config.json",
-      "./.agents/mcp_config.json"
+      "~/.gemini/antigravity/mcp_config.json",
+      "./.agents/mcp_config.json",
+      "./.agent/mcp_config.json",
+      "./_agents/mcp_config.json",
+      "./_agent/mcp_config.json"
     ]);
     expect(agy.skills?.paths).toEqual([
       "~/.gemini/config/skills",
       "./.agents/skills",
-      "./.agent/skills"
+      "./.agent/skills",
+      "./_agents/skills",
+      "./_agent/skills"
     ]);
     expect(agy.plugins?.format).toBe("directory");
     expect(agy.plugins?.dirPaths).toEqual([
       "~/.gemini/config/plugins",
       "./.agents/plugins",
-      "./.agent/plugins"
+      "./.agent/plugins",
+      "./_agents/plugins",
+      "./_agent/plugins"
     ]);
     expect(agy.agents?.paths).toEqual([
       "~/.gemini/config/agents",
       "./.agents/agents",
-      "./.agent/agents"
+      "./.agent/agents",
+      "./_agents/agents",
+      "./_agent/agents"
+    ]);
+    expect(agy.rules?.paths).toEqual([
+      "~/.gemini/GEMINI.md",
+      "./GEMINI.md",
+      "./AGENTS.md",
+      "./.agents/rules",
+      "./.agent/rules",
+      "./_agents/rules",
+      "./_agent/rules"
+    ]);
+    expect(agy.hooks?.paths).toEqual([
+      "~/.gemini/config/hooks.json",
+      "./.agents/hooks.json",
+      "./.agent/hooks.json",
+      "./_agents/hooks.json",
+      "./_agent/hooks.json"
     ]);
   });
 

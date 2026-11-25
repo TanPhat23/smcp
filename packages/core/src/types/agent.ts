@@ -8,7 +8,9 @@ export const DetectedAgentSchema = z.object({
   skillsDirPath: z.string().nullable(),
   pluginsConfigPath: z.string().nullable().optional(),
   pluginsDirPath: z.string().nullable().optional(),
-  agentsDirPath: z.string().nullable().optional()
+  agentsDirPath: z.string().nullable().optional(),
+  rulesPaths: z.array(z.string()).optional(),
+  hooksConfigPath: z.string().nullable().optional()
 });
 
 export type DetectedAgent = z.infer<typeof DetectedAgentSchema>;

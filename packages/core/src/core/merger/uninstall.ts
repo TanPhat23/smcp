@@ -5,6 +5,7 @@ import { getAgentProfiles } from "../agents/profiles.ts";
 import { isStrictlyInside } from "./helpers.ts";
 import { atomicWriteFileSync } from "../../utils/fs.ts";
 import { expandHome } from "../../utils/paths.ts";
+import { isRuleFilePath } from "../agents/rules.ts";
 import { stripJsonComments } from "../agents/index.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
 import { resolveActiveAgentPath, isGlobalConfigPath } from "../agents/detector.ts";
@@ -15,6 +16,8 @@ export interface UninstallResult {
   removedSkills: string[];
   removedPlugins: string[];
   removedAgents: string[];
+  removedRules: string[];
+  removedHooks: string[];
 }
 
 function collectCandidatePaths(paths: readonly string[]): string[] {
@@ -61,6 +64,8 @@ export function uninstallPackFromAgents(
   const removedSkills: string[] = [];
   const removedPlugins: string[] = [];
   const removedAgents: string[] = [];
+  const removedRules: string[] = [];
+  const removedHooks: string[] = [];
 
   const targetAgentIds = record.targetAgents || [];
 
@@ -204,7 +209,93 @@ export function uninstallPackFromAgents(
         }
       }
     }
+
+    // 5. Remove rule files
+    if (profile.rules?.paths?.length && record.installedRules?.length) {
+      for (const rawRulePath of profile.rules.paths) {
+        const resolvedRulePath = isGlobalConfigPath(rawRulePath)
+          ? expandHome(rawRulePath)
+          : path.resolve(expandHome(rawRulePath));
+
+        if (isRuleFilePath(resolvedRulePath)) {
+          const baseName = path.basename(resolvedRulePath);
+          const baseStem = baseName.startsWith(".")
+            ? baseName.slice(1)
+            : path.basename(resolvedRulePath, path.extname(resolvedRulePath));
+          const expectedRuleName = isGlobalConfigPath(rawRulePath)
+            ? `global-${baseStem}`
+            : baseStem;
+          if (
+            (record.installedRules.includes(expectedRuleName) ||
+              record.installedRules.includes(baseStem)) &&
+            fs.existsSync(resolvedRulePath)
+          ) {
+            try {
+              fs.unlinkSync(resolvedRulePath);
+              if (!removedRules.includes(expectedRuleName)) removedRules.push(expectedRuleName);
+            } catch {
+              // ignore unlink error
+            }
+          }
+          // Check sibling `rules/` next to an explicit rule file when directory fallback was used
+          const fallbackSiblingDir = path.join(path.dirname(resolvedRulePath), "rules");
+          if (fs.existsSync(fallbackSiblingDir)) {
+            for (const ruleName of record.installedRules) {
+              if (!ruleName || isPrototypePollutionKey(ruleName)) continue;
+              for (const fName of [`${ruleName}.md`, `${ruleName}.mdc`, ruleName]) {
+                if (removeSafelyInside(fallbackSiblingDir, fName, false)) {
+                  if (!removedRules.includes(ruleName)) removedRules.push(ruleName);
+                }
+              }
+            }
+          }
+        } else {
+          for (const ruleName of record.installedRules) {
+            if (!ruleName || isPrototypePollutionKey(ruleName)) continue;
+            for (const fName of [`${ruleName}.md`, `${ruleName}.mdc`, ruleName]) {
+              if (removeSafelyInside(resolvedRulePath, fName, false)) {
+                if (!removedRules.includes(ruleName)) removedRules.push(ruleName);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 6. Remove hook entries from standalone hooks.json or embedded settings key (e.g. Claude Code settings.json.hooks)
+    if (profile.hooks?.paths?.length && record.installedHooks?.length) {
+      const hooksKey = profile.hooks.key;
+      for (const candidateHookPath of collectCandidatePaths(profile.hooks.paths)) {
+        if (!fs.existsSync(candidateHookPath)) continue;
+        try {
+          const writePath = fs.realpathSync(candidateHookPath);
+          const raw = fs.readFileSync(writePath, "utf8");
+          const parsed: unknown = JSON.parse(stripJsonComments(raw));
+          if (!isPlainRecord(parsed)) continue;
+
+          const targetMap: unknown = hooksKey
+            ? (Object.hasOwn(parsed, hooksKey) ? parsed[hooksKey] : undefined)
+            : parsed;
+          if (!isPlainRecord(targetMap)) continue;
+
+          let modified = false;
+          for (const hookName of record.installedHooks) {
+            if (!hookName || isPrototypePollutionKey(hookName)) continue;
+            if (Object.hasOwn(targetMap, hookName)) {
+              delete targetMap[hookName];
+              modified = true;
+              if (!removedHooks.includes(hookName)) removedHooks.push(hookName);
+            }
+          }
+          if (modified) {
+            atomicWriteFileSync(writePath, JSON.stringify(parsed, null, 2) + "\n");
+          }
+        } catch {
+          // Ignore malformed hooks config
+        }
+      }
+    }
   }
 
-  return { removedMcp, removedSkills, removedPlugins, removedAgents };
+  return { removedMcp, removedSkills, removedPlugins, removedAgents, removedRules, removedHooks };
 }

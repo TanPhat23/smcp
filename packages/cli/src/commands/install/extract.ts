@@ -5,8 +5,12 @@ import {
   isPrototypePollutionKey,
   isStrictlyInside,
   isWindowsReservedName,
+  normalizeMcpServerConfig,
+  stripJsonComments,
   type AgentEntry,
+  type McpServerConfig,
   type PluginEntry,
+  type RuleEntry,
   type SkillEntry
 } from "@tanphat/smcp-core";
 
@@ -285,4 +289,121 @@ export function extractAgentContent(
 
   // 3. Fallback default markdown
   return `---\nname: ${agent.name}\ndescription: ${agent.description || agent.name}\nmode: ${agent.mode || "subagent"}\n---\n`;
+}
+
+export function extractRuleContent(
+  rule: RuleEntry,
+  rawFiles?: Record<string, string>,
+  localDir?: string
+): string {
+  if (!rule || !isSafeEntryName(rule.name)) return "";
+  if (typeof rule.content === "string" && rule.content.length > 0) {
+    return rule.content;
+  }
+  if (rule.files) {
+    const first = Object.values(rule.files)[0];
+    if (typeof first === "string") return first;
+  }
+  if (rawFiles) {
+    for (const candidate of [
+      rule.path,
+      `rules/${rule.name}.md`,
+      `rules/${rule.name}`,
+      `rules_${rule.name}.md`,
+      `rules_${rule.name}`
+    ]) {
+      if (candidate && rawFiles[candidate]) {
+        return rawFiles[candidate];
+      }
+    }
+  }
+  if (localDir && fs.existsSync(localDir)) {
+    const resolvedLocal = path.resolve(localDir);
+    const candidates = [
+      ...(rule.path ? [path.resolve(resolvedLocal, rule.path)] : []),
+      path.resolve(resolvedLocal, "rules", `${rule.name}.md`),
+      path.resolve(resolvedLocal, `${rule.name}.md`)
+    ];
+    for (const cand of candidates) {
+      if (!isStrictlyInside(resolvedLocal, cand)) continue;
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        try {
+          const canonical = fs.realpathSync(cand);
+          if (isStrictlyInside(fs.realpathSync(resolvedLocal), canonical)) {
+            return fs.readFileSync(canonical, "utf8");
+          }
+        } catch {
+          // ignore read error
+        }
+      }
+    }
+  }
+  return "";
+}
+
+export interface ExtractedDirectoryPluginComponents {
+  mcpServers: Record<string, McpServerConfig>;
+  skills: Record<string, Record<string, string>>;
+  agents: Array<{ name: string; content: string }>;
+}
+
+/**
+ * Extracts MCP servers, skills, and subagents bundled inside a directory-format plugin
+ * so they can also be installed into agents that don't natively load directory plugins.
+ */
+export function extractDirectoryPluginComponents(
+  files: Record<string, string>
+): ExtractedDirectoryPluginComponents {
+  const mcpServers: Record<string, McpServerConfig> = {};
+  const skills: Record<string, Record<string, string>> = {};
+  const agents: Array<{ name: string; content: string }> = [];
+  const seenAgentNames = new Set<string>();
+
+  for (const mcpFile of ["mcp_config.json", "mcp.json", "gemini-extension.json"]) {
+    const rawMcp = files[mcpFile];
+    if (typeof rawMcp !== "string") continue;
+    try {
+      const parsed: unknown = JSON.parse(stripJsonComments(rawMcp));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      const serversRaw = (parsed as Record<string, unknown>).mcpServers;
+      if (!serversRaw || typeof serversRaw !== "object" || Array.isArray(serversRaw)) continue;
+      for (const [sName, sVal] of Object.entries(serversRaw)) {
+        if (isPrototypePollutionKey(sName) || mcpServers[sName]) continue;
+        if (sVal && typeof sVal === "object" && !Array.isArray(sVal)) {
+          mcpServers[sName] = normalizeMcpServerConfig(sVal as Record<string, unknown>);
+        }
+      }
+    } catch {
+      // Ignore malformed plugin mcp config
+    }
+  }
+
+  for (const [relPath, content] of Object.entries(files)) {
+    const normalized = relPath.replaceAll("\\", "/");
+    if (normalized.startsWith("skills/")) {
+      const parts = normalized.split("/");
+      if (parts.length >= 3) {
+        const skillName = parts[1];
+        const fileRel = parts.slice(2).join("/");
+        if (isSafeEntryName(skillName) && isSafeRelFilePath(fileRel)) {
+          skills[skillName] = skills[skillName] || {};
+          skills[skillName][fileRel] = content;
+        }
+      }
+    } else if (normalized.startsWith("agents/") && normalized.toLowerCase().endsWith(".md")) {
+      const parts = normalized.split("/");
+      let agentName = "";
+      if (parts.length === 2) {
+        agentName = parts[1].replace(/\.md$/i, "");
+      } else if (parts.length === 3 && parts[2].toLowerCase() === "agent.md") {
+        agentName = parts[1];
+      }
+      if (agentName && isSafeEntryName(agentName) && !seenAgentNames.has(agentName)) {
+        seenAgentNames.add(agentName);
+        agents.push({ name: agentName, content });
+      }
+    }
+  }
+
+  return { mcpServers, skills, agents };
 }

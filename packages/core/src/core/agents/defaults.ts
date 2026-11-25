@@ -57,7 +57,14 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
         "./.opencode/agents"
       ],
       format: "markdown"
-    }
+    },
+    rules: {
+      paths: [
+        "~/.config/opencode/AGENTS.md",
+        "./AGENTS.md"
+      ]
+    },
+    hooks: null
   },
   "claude-code": {
     name: "Claude Code",
@@ -83,6 +90,22 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
         "./.claude/agents"
       ],
       format: "markdown"
+    },
+    rules: {
+      paths: [
+        "~/.claude/CLAUDE.md",
+        "~/.claude/rules",
+        "./CLAUDE.md",
+        "./.claude/rules"
+      ]
+    },
+    hooks: {
+      paths: [
+        "~/.claude/settings.json",
+        "./.claude/settings.json",
+        "./.claude/settings.local.json"
+      ],
+      key: "hooks"
     }
   },
   "claude-desktop": {
@@ -97,7 +120,9 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
     },
     skills: null,
     plugins: null,
-    agents: null
+    agents: null,
+    rules: null,
+    hooks: null
   },
   cursor: {
     name: "Cursor",
@@ -109,7 +134,15 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       paths: ["~/.cursor/skills", "./.cursor/rules"]
     },
     plugins: null,
-    agents: null
+    agents: null,
+    rules: {
+      paths: [
+        "./.cursor/rules",
+        "./.cursorrules",
+        "./AGENTS.md"
+      ]
+    },
+    hooks: null
   },
   windsurf: {
     name: "Windsurf",
@@ -121,14 +154,26 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       paths: ["~/.codeium/windsurf/skills"]
     },
     plugins: null,
-    agents: null
+    agents: null,
+    rules: {
+      paths: [
+        "~/.codeium/windsurf/memories/global_rules.md",
+        "./.windsurfrules",
+        "./.windsurf/rules"
+      ]
+    },
+    hooks: null
   },
   agy: {
     name: "Antigravity",
     mcpConfig: {
       paths: [
         "~/.gemini/config/mcp_config.json",
-        "./.agents/mcp_config.json"
+        "~/.gemini/antigravity/mcp_config.json",
+        "./.agents/mcp_config.json",
+        "./.agent/mcp_config.json",
+        "./_agents/mcp_config.json",
+        "./_agent/mcp_config.json"
       ],
       key: "mcpServers"
     },
@@ -136,7 +181,9 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       paths: [
         "~/.gemini/config/skills",
         "./.agents/skills",
-        "./.agent/skills"
+        "./.agent/skills",
+        "./_agents/skills",
+        "./_agent/skills"
       ]
     },
     plugins: {
@@ -146,16 +193,40 @@ export const DEFAULT_AGENTS: Record<string, AgentProfile> = deepFreeze({
       dirPaths: [
         "~/.gemini/config/plugins",
         "./.agents/plugins",
-        "./.agent/plugins"
+        "./.agent/plugins",
+        "./_agents/plugins",
+        "./_agent/plugins"
       ]
     },
     agents: {
       paths: [
         "~/.gemini/config/agents",
         "./.agents/agents",
-        "./.agent/agents"
+        "./.agent/agents",
+        "./_agents/agents",
+        "./_agent/agents"
       ],
       format: "markdown"
+    },
+    rules: {
+      paths: [
+        "~/.gemini/GEMINI.md",
+        "./GEMINI.md",
+        "./AGENTS.md",
+        "./.agents/rules",
+        "./.agent/rules",
+        "./_agents/rules",
+        "./_agent/rules"
+      ]
+    },
+    hooks: {
+      paths: [
+        "~/.gemini/config/hooks.json",
+        "./.agents/hooks.json",
+        "./.agent/hooks.json",
+        "./_agents/hooks.json",
+        "./_agent/hooks.json"
+      ]
     }
   }
 });

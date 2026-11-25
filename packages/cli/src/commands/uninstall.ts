@@ -90,7 +90,9 @@ export async function uninstallCommand(
           removedMcp: result.removedMcp,
           removedSkills: result.removedSkills,
           removedPlugins: result.removedPlugins,
-          removedAgents: result.removedAgents || []
+          removedAgents: result.removedAgents || [],
+          removedRules: result.removedRules || [],
+          removedHooks: result.removedHooks || []
         },
         null,
         2
@@ -111,6 +113,12 @@ export async function uninstallCommand(
   }
   if (result.removedAgents && result.removedAgents.length > 0) {
     p.log.info(`Removed agents: ${result.removedAgents.join(", ")}`);
+  }
+  if (result.removedRules && result.removedRules.length > 0) {
+    p.log.info(`Removed rules: ${result.removedRules.join(", ")}`);
+  }
+  if (result.removedHooks && result.removedHooks.length > 0) {
+    p.log.info(`Removed hooks: ${result.removedHooks.join(", ")}`);
   }
   p.outro("");
 }

@@ -57,4 +57,25 @@ export function exportPackLocally(
       }
     }
   }
+
+  if (manifest.rules && manifest.rules.length > 0) {
+    const rulesDir = path.resolve(outDir, "rules");
+    fs.mkdirSync(rulesDir, { recursive: true });
+    for (const rule of manifest.rules) {
+      if (typeof rule.content === "string") {
+        const safeName = path.basename(rule.name);
+        const targetPath = path.resolve(rulesDir, `${safeName}.md`);
+        if (isStrictlyInside(rulesDir, targetPath)) {
+          atomicWriteFileSync(targetPath, rule.content);
+        }
+      }
+    }
+  }
+
+  if (manifest.hooks && Object.keys(manifest.hooks).length > 0) {
+    atomicWriteFileSync(
+      path.join(outDir, "hooks", "hooks.json"),
+      JSON.stringify(manifest.hooks, null, 2) + "\n"
+    );
+  }
 }

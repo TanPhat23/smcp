@@ -14,6 +14,7 @@ function hasServerEndpointField(cfg: Record<string, unknown>): boolean {
     "command" in cfg ||
     "url" in cfg ||
     "serverUrl" in cfg ||
+    "httpUrl" in cfg ||
     "type" in cfg
   );
 }
@@ -29,9 +30,16 @@ export function normalizeMcpServerConfig(raw: Record<string, unknown>): McpServe
       cfg.args = argsStr;
     }
   }
-  if (typeof raw.serverUrl === "string" && raw.serverUrl.trim() && typeof cfg.url !== "string") {
-    cfg.url = raw.serverUrl.trim();
+  const remoteAlias =
+    typeof raw.serverUrl === "string" && raw.serverUrl.trim()
+      ? raw.serverUrl.trim()
+      : typeof raw.httpUrl === "string" && raw.httpUrl.trim()
+      ? raw.httpUrl.trim()
+      : undefined;
+  if (remoteAlias && typeof cfg.url !== "string") {
+    cfg.url = remoteAlias;
     delete cfg.serverUrl;
+    delete cfg.httpUrl;
   }
   return cfg as McpServerConfig;
 }

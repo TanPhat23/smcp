@@ -50,7 +50,7 @@ export function createProgram(options?: CreateProgramOptions): Command {
   program
     .name("smcp")
     .description("CLI tool to bundle, sanitize, and share AI Agent Skills and MCP server configurations")
-    .version("0.5.3")
+    .version("0.5.4")
     .option("--no-plugins", "Disable loading plugins and extensions")
     .option("--no-extensions", "Disable loading plugins and extensions")
     .option(
@@ -98,6 +98,8 @@ export function createProgram(options?: CreateProgramOptions): Command {
     .option("-k, --skills <skills...>", "Specific skills to share")
     .option("-p, --plugins <plugins...>", "Specific plugins to share")
     .option("-g, --agent-roles <roles...>", "Specific agent roles to share")
+    .option("--rules <rules...>", "Specific rules to share")
+    .option("--hooks <hooks...>", "Specific hooks to share")
     .option("-n, --name <name>", "Pack name")
     .option("-d, --description <description>", "Pack description")
     .option("--public", "Make published GitHub Gist or repository public")

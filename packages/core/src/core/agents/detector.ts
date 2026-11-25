@@ -133,6 +133,45 @@ function findFirstExistingPath(
   return null;
 }
 
+function findAllExistingPaths(paths: readonly string[] | undefined): string[] {
+  if (!paths || !Array.isArray(paths)) {
+    return [];
+  }
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const p of paths) {
+    try {
+      const expanded = isGlobalConfigPath(p) ? expandHome(p) : path.resolve(expandHome(p));
+      if (fs.existsSync(expanded) && !seen.has(expanded)) {
+        seen.add(expanded);
+        found.push(expanded);
+      }
+    } catch {
+      // Ignore path access error
+    }
+  }
+  return found;
+}
+
+function findSiblingJsonTargetDir(
+  paths: readonly string[] | undefined,
+  jsonFilename: string
+): string | null {
+  if (!paths || !Array.isArray(paths)) return null;
+  for (const p of paths) {
+    try {
+      const expanded = expandHome(p);
+      const siblingJson = path.join(path.dirname(expanded), jsonFilename);
+      if (fs.existsSync(siblingJson) && fs.statSync(siblingJson).isFile()) {
+        return expanded;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return null;
+}
+
 export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedAgent[] {
   const activeProfiles = profiles || getAgentProfiles();
   const detected: DetectedAgent[] = [];
@@ -142,17 +181,25 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
     if (!profile || typeof profile !== "object") continue;
 
     const resolvedMcpPath = findFirstExistingPath(profile.mcpConfig?.paths, "file");
-    const resolvedSkillsPath = findFirstExistingPath(profile.skills?.paths, "directory");
+    const resolvedSkillsPath =
+      findFirstExistingPath(profile.skills?.paths, "directory") ??
+      findSiblingJsonTargetDir(profile.skills?.paths, "skills.json");
     const resolvedAgentsDirPath = findFirstExistingPath(profile.agents?.paths, "directory");
     const resolvedPluginsConfigPath = findFirstExistingPath(profile.plugins?.paths, "file");
-    const resolvedPluginsDirPath = findFirstExistingPath(profile.plugins?.dirPaths, "directory");
+    const resolvedPluginsDirPath =
+      findFirstExistingPath(profile.plugins?.dirPaths, "directory") ??
+      findSiblingJsonTargetDir(profile.plugins?.dirPaths, "plugins.json");
+    const resolvedRulesPaths = findAllExistingPaths(profile.rules?.paths);
+    const resolvedHooksConfigPath = findFirstExistingPath(profile.hooks?.paths, "file");
 
     if (
       resolvedMcpPath ||
       resolvedSkillsPath ||
       resolvedPluginsConfigPath ||
       resolvedPluginsDirPath ||
-      resolvedAgentsDirPath
+      resolvedAgentsDirPath ||
+      resolvedRulesPaths.length > 0 ||
+      resolvedHooksConfigPath
     ) {
       detected.push({
         id,
@@ -161,7 +208,9 @@ export function detectAgents(profiles?: Record<string, AgentProfile>): DetectedA
         skillsDirPath: resolvedSkillsPath,
         pluginsConfigPath: resolvedPluginsConfigPath,
         pluginsDirPath: resolvedPluginsDirPath,
-        agentsDirPath: resolvedAgentsDirPath
+        agentsDirPath: resolvedAgentsDirPath,
+        ...(resolvedRulesPaths.length > 0 ? { rulesPaths: resolvedRulesPaths } : {}),
+        ...(resolvedHooksConfigPath ? { hooksConfigPath: resolvedHooksConfigPath } : {})
       });
     }
   }

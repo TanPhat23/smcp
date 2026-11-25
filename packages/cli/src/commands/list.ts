@@ -4,9 +4,11 @@ import {
   detectAgents,
   filterAgents,
   getAgentProfiles,
+  readInstalledHooks,
   readInstalledMcpServers,
   readInstalledPlugins,
   scanAgents,
+  scanRules,
   scanSkills
 } from "@tanphat/smcp-core";
 
@@ -47,6 +49,10 @@ export function listCommand(options?: ListCommandOptions): void {
               )
             : [];
         const agentsList = agent.agentsDirPath ? scanAgents(agent.agentsDirPath) : [];
+        const rulesList = agent.rulesPaths?.length ? scanRules(agent.rulesPaths) : [];
+        const hooksMap = agent.hooksConfigPath
+          ? readInstalledHooks(agent.hooksConfigPath, profile?.hooks?.key)
+          : {};
         return {
           id: agent.id,
           name: agent.name,
@@ -55,6 +61,8 @@ export function listCommand(options?: ListCommandOptions): void {
           pluginsConfigPath: agent.pluginsConfigPath,
           pluginsDirPath: agent.pluginsDirPath,
           agentsDirPath: agent.agentsDirPath,
+          ...(agent.rulesPaths ? { rulesPaths: agent.rulesPaths } : {}),
+          ...(agent.hooksConfigPath ? { hooksConfigPath: agent.hooksConfigPath } : {}),
           mcpServers: servers,
           skills: skills.map((sk) => ({
             name: sk.name,
@@ -69,7 +77,17 @@ export function listCommand(options?: ListCommandOptions): void {
             description: ag.description,
             mode: ag.mode,
             model: ag.model
-          }))
+          })),
+          ...(rulesList.length > 0
+            ? {
+                rules: rulesList.map((r) => ({
+                  name: r.name,
+                  path: r.path,
+                  contentHash: r.contentHash
+                }))
+              }
+            : {}),
+          ...(Object.keys(hooksMap).length > 0 ? { hooks: hooksMap } : {})
         };
       })
     };
@@ -219,6 +237,33 @@ export function listCommand(options?: ListCommandOptions): void {
           } else {
             console.log(`    - ${pc.bold(ag.name)}${pc.dim(modeHint)}`);
           }
+        }
+      }
+    }
+
+    if (agent.rulesPaths && agent.rulesPaths.length > 0) {
+      const rulesList = scanRules(agent.rulesPaths);
+      if (rulesList.length > 0) {
+        console.log(`  ${pc.magenta("Rules")}:`);
+        for (const r of rulesList) {
+          if (showSettings) {
+            console.log(`    - ${pc.bold(r.name)}`);
+            console.log(`        ${pc.dim("Path:")} ${r.path}`);
+          } else {
+            console.log(`    - ${pc.bold(r.name)}`);
+          }
+        }
+      }
+    }
+
+    if (agent.hooksConfigPath) {
+      const profile = profiles[agent.id];
+      const hooksMap = readInstalledHooks(agent.hooksConfigPath, profile?.hooks?.key);
+      const hookNames = Object.keys(hooksMap);
+      if (hookNames.length > 0) {
+        console.log(`  ${pc.cyan("Hooks")} (${pc.dim(agent.hooksConfigPath)}):`);
+        for (const hName of hookNames) {
+          console.log(`    - ${pc.bold(hName)}`);
         }
       }
     }

@@ -346,6 +346,8 @@ export async function installCommand(
       installedSkills: (manifest.skills || []).map((s) => s.name),
       installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
       installedAgents: allAgentNames,
+      installedRules: result.installedRules.length > 0 ? result.installedRules : undefined,
+      installedHooks: result.installedHooks.length > 0 ? result.installedHooks : undefined,
       envKeys: Object.keys(options?.env || {}),
       installedAt: new Date().toISOString()
     });
@@ -400,6 +402,8 @@ export async function installCommand(
             installedSkills: (manifest.skills || []).map((s) => s.name),
             installedPlugins: (manifest.plugins || []).map((p) => (typeof p === "string" ? p : p.name)),
             installedAgents: allAgentNames,
+            installedRules: result.installedRules.length > 0 ? result.installedRules : undefined,
+            installedHooks: result.installedHooks.length > 0 ? result.installedHooks : undefined,
             writtenPaths: result.writtenPaths,
             warnings: warnings.length > 0 ? warnings : undefined
           },
@@ -429,6 +433,12 @@ export async function installCommand(
       }
       if (written.agentsDir && written.agents && written.agents.length > 0) {
         console.log(`  • ${pc.cyan(agentId)} agents: ${pc.dim(written.agentsDir)} [${written.agents.join(", ")}]`);
+      }
+      if (written.rules && written.rules.length > 0) {
+        console.log(`  • ${pc.cyan(agentId)} rules: ${pc.dim(written.rulesDir || "")} [${written.rules.join(", ")}]`);
+      }
+      if (written.hooksConfig && written.hooks && written.hooks.length > 0) {
+        console.log(`  • ${pc.cyan(agentId)} hooks: ${pc.dim(written.hooksConfig)} [${written.hooks.join(", ")}]`);
       }
     }
     console.log("");

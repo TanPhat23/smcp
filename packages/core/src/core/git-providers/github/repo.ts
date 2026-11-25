@@ -129,6 +129,24 @@ export function generatePackReadme(manifest: Manifest, repoFullName?: string): s
     lines.push("");
   }
 
+  const rules = manifest.rules || [];
+  if (rules.length > 0) {
+    lines.push("## Rules", "");
+    for (const r of rules) {
+      lines.push(`- **${r.name}**`);
+    }
+    lines.push("");
+  }
+
+  const hookNames = manifest.hooks ? Object.keys(manifest.hooks) : [];
+  if (hookNames.length > 0) {
+    lines.push("## Hooks", "");
+    for (const h of hookNames) {
+      lines.push(`- **${h}**`);
+    }
+    lines.push("");
+  }
+
   return lines.join("\n") + "\n";
 }
 

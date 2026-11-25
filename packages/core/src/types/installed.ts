@@ -10,6 +10,8 @@ export const InstalledPackRecordSchema = z.object({
   installedSkills: z.array(z.string()).default([]),
   installedPlugins: z.array(z.string()).default([]),
   installedAgents: z.array(z.string()).optional(),
+  installedRules: z.array(z.string()).optional(),
+  installedHooks: z.array(z.string()).optional(),
   envKeys: z.array(z.string()).optional(),
   installedAt: z.string(),
   updatedAt: z.string().optional()

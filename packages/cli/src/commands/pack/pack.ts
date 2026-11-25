@@ -10,7 +10,7 @@ import {
   type Manifest,
   type UniversalAgent
 } from "@tanphat/smcp-core";
-import { bundlePluginFiles, bundleSkillFiles } from "../share/bundle.ts";
+import { bundleAgentFilesForShare, bundlePluginFiles, bundleRuleFilesForShare, bundleSkillFiles } from "../share/bundle.ts";
 import {
   discoverPackComponents,
   type DiscoveredAgent,
@@ -191,6 +191,25 @@ export async function packDirectory(
         }
       }
     }
+  }
+
+  // 4. Bundle Rules & Hooks
+  if (components.rules && components.rules.length > 0 && (!manifest.rules || manifest.rules.length === 0)) {
+    const { bundledRules, gistFiles: ruleGistFiles } = bundleRuleFilesForShare(components.rules);
+    manifest.rules = bundledRules;
+    Object.assign(gistFiles, ruleGistFiles);
+    for (const r of bundledRules) {
+      if (typeof r.content === "string") {
+        rawFiles[`rules/${r.name}.md`] = r.content;
+      }
+    }
+  }
+
+  if (components.hooks && Object.keys(components.hooks).length > 0 && (!manifest.hooks || Object.keys(manifest.hooks).length === 0)) {
+    manifest.hooks = components.hooks;
+    const hooksContent = JSON.stringify(components.hooks, null, 2) + "\n";
+    rawFiles["hooks/hooks.json"] = hooksContent;
+    gistFiles["hooks.json"] = { content: hooksContent };
   }
 
   if (manifest.mcpServers && Object.keys(manifest.mcpServers).length > 0) {

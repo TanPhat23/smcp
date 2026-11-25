@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PluginObjectEntry } from "../../types/index.ts";
 import { expandHome } from "../../utils/paths.ts";
 import { isPrototypePollutionKey } from "../../utils/security.ts";
+import { isItemIncludedByJsonConfig, resolveJsonConfigEntryDirs } from "./json-configs.ts";
 import { stripJsonComments } from "./jsonc.ts";
 
 export type PluginFormat = "array" | "map" | "directory";
@@ -165,6 +166,68 @@ function findPluginManifest(subDir: string): Record<string, unknown> | null {
   return null;
 }
 
+function readDirectoryPluginsFromDir(
+  resolvedDir: string,
+  includeOnly: readonly string[],
+  exclude: readonly string[],
+  configMap: Record<string, unknown>,
+  targetAgent: string,
+  seen: Set<string>,
+  plugins: PluginObjectEntry[]
+): void {
+  try {
+    if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) return;
+    const entries = fs
+      .readdirSync(resolvedDir, { withFileTypes: true })
+      .filter((e) => !e.name.startsWith("."))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      if (
+        isPrototypePollutionKey(entry.name) ||
+        seen.has(entry.name) ||
+        !isItemIncludedByJsonConfig(entry.name, includeOnly, exclude)
+      ) {
+        continue;
+      }
+      const subDir = path.join(resolvedDir, entry.name);
+      try {
+        if (!fs.statSync(subDir).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+
+      const manifest = findPluginManifest(subDir);
+      if (!manifest) continue;
+
+      const configOverride = Object.hasOwn(configMap, entry.name)
+        ? configMap[entry.name]
+        : undefined;
+      const overrideEnabled =
+        isPlainRecord(configOverride) && typeof configOverride.enabled === "boolean"
+          ? configOverride.enabled
+          : undefined;
+
+      const isEnabled =
+        overrideEnabled !== undefined
+          ? overrideEnabled
+          : manifest.disabled !== true;
+
+      seen.add(entry.name);
+      if (!isEnabled) continue;
+
+      plugins.push({
+        name: entry.name,
+        targetAgent,
+        description: typeof manifest.description === "string" ? manifest.description : undefined,
+        path: subDir
+      });
+    }
+  } catch {
+    // ignore directory access error
+  }
+}
+
 function readDirectoryPlugins(
   json: Record<string, unknown> | null,
   key: string,
@@ -178,52 +241,26 @@ function readDirectoryPlugins(
   const configMap = json && isPlainRecord(json[key]) ? json[key] : {};
   const plugins: PluginObjectEntry[] = [];
   const seen = new Set<string>();
+  const scannedJsonConfigs = new Set<string>();
 
   for (const dir of dirPaths) {
-    try {
-      const resolvedDir = expandHome(dir);
-      if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) continue;
-      const entries = fs
-        .readdirSync(resolvedDir, { withFileTypes: true })
-        .filter((e) => !e.name.startsWith("."))
-        .sort((a, b) => a.name.localeCompare(b.name));
+    const resolvedDir = expandHome(dir);
+    readDirectoryPluginsFromDir(resolvedDir, [], [], configMap, targetAgent, seen, plugins);
 
-      for (const entry of entries) {
-        if (isPrototypePollutionKey(entry.name) || seen.has(entry.name)) continue;
-        const subDir = path.join(resolvedDir, entry.name);
-        try {
-          if (!fs.statSync(subDir).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-
-        const manifest = findPluginManifest(subDir);
-        if (!manifest) continue;
-
-        const configOverride = Object.hasOwn(configMap, entry.name)
-          ? configMap[entry.name]
-          : undefined;
-        const overrideEnabled = isPlainRecord(configOverride) && typeof configOverride.enabled === "boolean"
-          ? configOverride.enabled
-          : undefined;
-
-        const isEnabled =
-          overrideEnabled !== undefined
-            ? overrideEnabled
-            : manifest.disabled !== true;
-
-        seen.add(entry.name);
-        if (!isEnabled) continue;
-
-        plugins.push({
-          name: entry.name,
+    const siblingPluginsJson = path.join(path.dirname(resolvedDir), "plugins.json");
+    if (!scannedJsonConfigs.has(siblingPluginsJson)) {
+      scannedJsonConfigs.add(siblingPluginsJson);
+      for (const extraDir of resolveJsonConfigEntryDirs(siblingPluginsJson)) {
+        readDirectoryPluginsFromDir(
+          extraDir.dirPath,
+          extraDir.includeOnly,
+          extraDir.exclude,
+          configMap,
           targetAgent,
-          description: typeof manifest.description === "string" ? manifest.description : undefined,
-          path: subDir
-        });
+          seen,
+          plugins
+        );
       }
-    } catch {
-      // ignore directory access error
     }
   }
 

@@ -5,6 +5,7 @@ import { SkillEntrySchema, type SkillEntry } from "./skill.ts";
 import { PluginEntrySchema, type PluginEntry } from "./plugin.ts";
 import { RequiredEnvSchema, type RequiredEnv } from "./env.ts";
 import { AgentEntrySchema, type AgentEntry } from "./agent.ts";
+import { RuleEntrySchema, type RuleEntry } from "./rule.ts";
 
 export const ManifestSchema = z
   .object({
@@ -19,6 +20,8 @@ export const ManifestSchema = z
     skills: z.array(SkillEntrySchema).optional().default([]),
     plugins: z.array(PluginEntrySchema).optional().default([]),
     agents: z.array(AgentEntrySchema).optional().default([]),
+    rules: z.array(RuleEntrySchema).optional().default([]),
+    hooks: z.record(z.string(), z.unknown()).optional(),
     requiredEnv: z.array(RequiredEnvSchema).optional().default([])
   })
   .passthrough();
@@ -35,6 +38,8 @@ export interface Manifest {
   skills?: SkillEntry[];
   plugins?: PluginEntry[];
   agents?: AgentEntry[];
+  rules?: RuleEntry[];
+  hooks?: Record<string, unknown>;
   requiredEnv?: RequiredEnv[];
   [key: string]: unknown;
 }

@@ -2,6 +2,7 @@ export * from "./common.ts";
 export * from "./mcp.ts";
 export * from "./skill.ts";
 export * from "./plugin.ts";
+export * from "./rule.ts";
 export * from "./env.ts";
 export * from "./manifest.ts";
 export * from "./agent.ts";

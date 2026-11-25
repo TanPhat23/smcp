@@ -376,6 +376,20 @@ export async function inspectCommand(
   // Agents
   console.log(`\n` + formatInspectAgents(manifest.agents || []));
 
+  if (manifest.rules && manifest.rules.length > 0) {
+    console.log(`\n${pc.bold(pc.blue("Rules:"))}`);
+    for (const r of manifest.rules) {
+      console.log(`  - ${pc.bold(r.name)} (${pc.dim(r.path)})`);
+    }
+  }
+
+  if (manifest.hooks && Object.keys(manifest.hooks).length > 0) {
+    console.log(`\n${pc.bold(pc.yellow("Hooks:"))}`);
+    for (const hName of Object.keys(manifest.hooks)) {
+      console.log(`  - ${pc.bold(hName)}`);
+    }
+  }
+
   p.note(`To install this pack, run:\n  smcp install ${source}`, "Ready to install?");
   p.outro("");
   return manifest;

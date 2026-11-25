@@ -35,6 +35,8 @@ export interface ShareCommandOptions {
   plugins?: string[];
   agents?: string[];
   agentRoles?: string[];
+  rules?: string[];
+  hooks?: string[];
   isPublic?: boolean;
   public?: boolean;
   settings?: boolean;

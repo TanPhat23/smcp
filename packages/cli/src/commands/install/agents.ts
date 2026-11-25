@@ -6,8 +6,11 @@ import {
   getAgentProfiles,
   installAgentFiles,
   installPluginFiles,
+  installRuleFile,
   installSkillFiles,
   isGlobalConfigPath,
+  isRuleFilePath,
+  mergeHooksIntoFile,
   mergeMcpServersIntoFile,
   mergePluginsIntoFile,
   parseAgentMarkdown,
@@ -18,7 +21,13 @@ import {
   type McpServerConfig,
   type UniversalAgent
 } from "@tanphat/smcp-core";
-import { extractAgentContent, extractPluginFiles, extractSkillFiles } from "./extract.ts";
+import {
+  extractAgentContent,
+  extractDirectoryPluginComponents,
+  extractPluginFiles,
+  extractRuleContent,
+  extractSkillFiles
+} from "./extract.ts";
 
 export { resolveActiveAgentPath };
 export const resolveActivePath = resolveActiveAgentPath;
@@ -152,6 +161,10 @@ export interface WrittenAgentPaths {
   plugins?: string[];
   agentsDir?: string;
   agents?: string[];
+  rulesDir?: string;
+  rules?: string[];
+  hooksConfig?: string;
+  hooks?: string[];
 }
 
 function filterCompatiblePlugins(
@@ -204,6 +217,113 @@ function hasDirectoryPluginManifest(files: Record<string, string>): boolean {
   );
 }
 
+function isDirectoryPluginBundle(
+  pl: NonNullable<Manifest["plugins"]>[number],
+  files: Record<string, string>
+): boolean {
+  if (Object.keys(files).length === 0) return false;
+  if (typeof pl === "object" && (pl.targetAgent === "agy" || pl.targetAgent === "antigravity")) {
+    return true;
+  }
+  return (
+    hasDirectoryPluginManifest(files) ||
+    Object.hasOwn(files, ".claude-plugin/plugin.json") ||
+    Object.hasOwn(files, "mcp_config.json") ||
+    Object.hasOwn(files, "mcp.json") ||
+    Object.hasOwn(files, "hooks.json") ||
+    Object.keys(files).some((k) => k.startsWith("skills/") || k.startsWith("agents/"))
+  );
+}
+
+function installFallbackPluginComponentsForAgent(
+  agentId: string,
+  profile: AgentProfile,
+  manifestPlugins: NonNullable<Manifest["plugins"]>,
+  rawFiles: Record<string, string> | undefined,
+  localDir: string | undefined,
+  effectiveRuntime: string,
+  scope: "global" | "project" | undefined,
+  written: WrittenAgentPaths,
+  installedAgentNames: string[]
+): boolean {
+  let installedAny = false;
+  const extractedMcp: Record<string, McpServerConfig> = {};
+  const extractedSkills: Record<string, Record<string, string>> = {};
+  const extractedAgents: Array<{ name: string; content: string }> = [];
+
+  for (const pl of manifestPlugins) {
+    const pName = typeof pl === "string" ? pl : pl.name;
+    if (isScriptFilePluginName(pName)) continue;
+    const files = extractPluginFiles(pl, rawFiles, localDir);
+    if (!isDirectoryPluginBundle(pl, files)) continue;
+
+    const components = extractDirectoryPluginComponents(files);
+    for (const [sName, sConf] of Object.entries(components.mcpServers)) {
+      if (!extractedMcp[sName]) {
+        extractedMcp[sName] = transformMcpServerRuntime(sConf, effectiveRuntime);
+      }
+    }
+    for (const [skName, skFiles] of Object.entries(components.skills)) {
+      if (!extractedSkills[skName]) {
+        extractedSkills[skName] = skFiles;
+      }
+    }
+    for (const ag of components.agents) {
+      if (!extractedAgents.some((existing) => existing.name === ag.name)) {
+        extractedAgents.push(ag);
+      }
+    }
+  }
+
+  if (profile.mcpConfig?.paths?.length && Object.keys(extractedMcp).length > 0) {
+    const primaryMcpPath = resolveActiveAgentPath(profile.mcpConfig.paths, { scope });
+    if (primaryMcpPath) {
+      mergeMcpServersIntoFile(primaryMcpPath, extractedMcp, {
+        mcpKey: profile.mcpConfig.key || "mcpServers",
+        format: profile.mcpConfig.format,
+        agentId
+      });
+      written.config = primaryMcpPath;
+      installedAny = true;
+    }
+  }
+
+  if (profile.skills?.paths?.length && Object.keys(extractedSkills).length > 0) {
+    const primarySkillsDir = resolveActiveAgentPath(profile.skills.paths, { scope });
+    if (primarySkillsDir) {
+      written.skillsDir = primarySkillsDir;
+      written.skills = written.skills || [];
+      for (const [skName, skFiles] of Object.entries(extractedSkills)) {
+        installSkillFiles(primarySkillsDir, skName, skFiles);
+        if (!written.skills.includes(skName)) written.skills.push(skName);
+      }
+      installedAny = true;
+    }
+  }
+
+  if (profile.agents?.paths?.length && extractedAgents.length > 0) {
+    const primaryAgentsDir = resolveActiveAgentPath(profile.agents.paths, { scope });
+    if (primaryAgentsDir) {
+      written.agentsDir = primaryAgentsDir;
+      written.agents = written.agents || [];
+      for (const ag of extractedAgents) {
+        try {
+          const parsed = parseAgentMarkdown(ag.content, ag.name);
+          const { writtenPath } = installAgentFiles(primaryAgentsDir, parsed, agentId);
+          const installedName = path.basename(writtenPath, path.extname(writtenPath));
+          if (!written.agents.includes(installedName)) written.agents.push(installedName);
+          if (!installedAgentNames.includes(installedName)) installedAgentNames.push(installedName);
+          installedAny = true;
+        } catch {
+          // Skip unparseable plugin agent
+        }
+      }
+    }
+  }
+
+  return installedAny;
+}
+
 function installPluginsForAgent(
   agentId: string,
   profile: AgentProfile,
@@ -211,17 +331,33 @@ function installPluginsForAgent(
   rawFiles: Record<string, string> | undefined,
   localDir: string | undefined,
   customPluginDir: string | undefined,
+  effectiveRuntime: string,
   scope: "global" | "project" | undefined,
-  written: WrittenAgentPaths
+  written: WrittenAgentPaths,
+  installedAgentNames: string[]
 ): boolean {
   const pluginsConfig = profile.plugins;
-  if (!pluginsConfig) return false;
+  const format = pluginsConfig?.format || "array";
+  const compatiblePlugins = pluginsConfig
+    ? filterCompatiblePlugins(manifestPlugins, agentId, format)
+    : [];
 
-  const format = pluginsConfig.format || "array";
-  const compatiblePlugins = filterCompatiblePlugins(manifestPlugins, agentId, format);
-  if (compatiblePlugins.length === 0) return false;
+  if (!pluginsConfig) {
+    return installFallbackPluginComponentsForAgent(
+      agentId,
+      profile,
+      manifestPlugins,
+      rawFiles,
+      localDir,
+      effectiveRuntime,
+      scope,
+      written,
+      installedAgentNames
+    );
+  }
 
   if (format === "directory") {
+    if (compatiblePlugins.length === 0) return false;
     const destPluginDir =
       customPluginDir ||
       (pluginsConfig.dirPaths ? resolveActiveAgentPath(pluginsConfig.dirPaths, { scope }) : undefined);
@@ -252,9 +388,23 @@ function installPluginsForAgent(
     return true;
   }
 
-  if (!pluginsConfig.paths || pluginsConfig.paths.length === 0) return false;
+  const fallbackInstalled = installFallbackPluginComponentsForAgent(
+    agentId,
+    profile,
+    manifestPlugins,
+    rawFiles,
+    localDir,
+    effectiveRuntime,
+    scope,
+    written,
+    installedAgentNames
+  );
+
+  if (compatiblePlugins.length === 0 || !pluginsConfig.paths || pluginsConfig.paths.length === 0) {
+    return fallbackInstalled;
+  }
   const primaryPluginsConfig = resolveActiveAgentPath(pluginsConfig.paths, { scope });
-  if (!primaryPluginsConfig) return false;
+  if (!primaryPluginsConfig) return fallbackInstalled;
 
   const isOpenCode =
     agentId === "opencode" ||
@@ -269,7 +419,7 @@ function installPluginsForAgent(
   const installedPluginNames: string[] = [];
   for (const pl of compatiblePlugins) {
     const files = extractPluginFiles(pl, rawFiles, localDir);
-    if (Object.keys(files).length > 0) {
+    if (Object.keys(files).length > 0 && !isDirectoryPluginBundle(pl, files)) {
       const pName = typeof pl === "string" ? pl : pl.name;
       installPluginFiles(destPluginDir, pName, files);
       if (isOpenCode) {
@@ -284,24 +434,69 @@ function installPluginsForAgent(
     written.plugins = installedPluginNames;
   }
 
-  // For OpenCode: v2.0.20 rejects .ts file paths in plugins array ("configured plugin path must be a directory")
-  // and auto-discovers from .opencode/plugins/*.ts.
-  // Only pass package specifiers (npm packages) to mergePluginsIntoFile.
   const pluginsForConfig = isOpenCode
     ? compatiblePlugins.filter((pl) => {
         const name = typeof pl === "string" ? pl : pl.name;
         return !isScriptFilePluginName(name);
       })
-    : compatiblePlugins;
+    : compatiblePlugins.filter((pl) => !isDirectoryPluginBundle(pl, extractPluginFiles(pl, rawFiles, localDir)));
 
-  mergePluginsIntoFile(
-    primaryPluginsConfig,
-    pluginsForConfig,
-    pluginsConfig.key || (isOpenCode ? "plugins" : "plugin"),
-    format
-  );
+  if (pluginsForConfig.length > 0 || installedPluginNames.length > 0) {
+    mergePluginsIntoFile(
+      primaryPluginsConfig,
+      pluginsForConfig,
+      pluginsConfig.key || (isOpenCode ? "plugins" : "plugin"),
+      format
+    );
+    return true;
+  }
 
-  return true;
+  return fallbackInstalled;
+}
+
+function getRuleFileStem(rawPath: string): string {
+  const base = path.basename(rawPath);
+  if (base.startsWith(".")) return base.slice(1);
+  return path.basename(rawPath, path.extname(rawPath));
+}
+
+function resolveRuleInstallTarget(
+  ruleName: string,
+  profileRulePaths: readonly string[],
+  scope: "global" | "project" | undefined
+): string | undefined {
+  if (profileRulePaths.length === 0) return undefined;
+
+  const scopedPaths =
+    scope === "global"
+      ? profileRulePaths.filter((p) => isGlobalConfigPath(p))
+      : scope === "project"
+        ? profileRulePaths.filter((p) => !isGlobalConfigPath(p))
+        : profileRulePaths;
+
+  const candidates = scopedPaths.length > 0 ? scopedPaths : profileRulePaths;
+
+  const explicitMatch = candidates.find((candidate) => {
+    if (!isRuleFilePath(candidate)) return false;
+    const stem = getRuleFileStem(candidate);
+    if (isGlobalConfigPath(candidate)) {
+      return ruleName === `global-${stem}` || (scope === "global" && ruleName === stem);
+    }
+    return ruleName === stem;
+  });
+  if (explicitMatch) {
+    return expandHome(explicitMatch);
+  }
+
+  const ruleDirs = candidates.filter((candidate) => !isRuleFilePath(candidate));
+  if (ruleDirs.length > 0) {
+    const resolvedDir = resolveActiveAgentPath(ruleDirs, { scope });
+    if (resolvedDir) return resolvedDir;
+  }
+
+  const activeFile = resolveActiveAgentPath([...candidates], { scope });
+  if (!activeFile) return undefined;
+  return isRuleFilePath(activeFile) ? path.join(path.dirname(activeFile), "rules") : activeFile;
 }
 
 export function installPackIntoAgents(
@@ -319,6 +514,8 @@ export function installPackIntoAgents(
   installedSkills: string[];
   installedPlugins: string[];
   installedAgents: string[];
+  installedRules: string[];
+  installedHooks: string[];
   writtenPaths: Record<string, WrittenAgentPaths>;
 } {
   const activeProfiles = profiles || getAgentProfiles();
@@ -326,6 +523,8 @@ export function installPackIntoAgents(
   const installedSkills: string[] = [];
   const installedPlugins: string[] = [];
   const installedAgents: string[] = [];
+  const installedRules: string[] = [];
+  const installedHooks: string[] = [];
   const writtenPaths: Record<string, WrittenAgentPaths> = {};
 
   const effectiveRuntime = runtime || detectAvailableRuntime();
@@ -378,7 +577,7 @@ export function installPackIntoAgents(
       }
     }
 
-    // Install Plugins
+    // Install Plugins (or flatten directory-plugin MCP/skills/agents for non-directory harnesses)
     if (manifest.plugins?.length) {
       if (
         installPluginsForAgent(
@@ -388,8 +587,10 @@ export function installPackIntoAgents(
           rawFiles,
           localDir,
           customPluginDir,
+          effectiveRuntime,
           scope,
-          writtenPaths[agentId]
+          writtenPaths[agentId],
+          installedAgents
         )
       ) {
         installedPlugins.push(agentId);
@@ -403,7 +604,7 @@ export function installPackIntoAgents(
     ) {
       const primaryAgentsDir = resolveActiveAgentPath(profile.agents.paths, { scope });
       if (primaryAgentsDir) {
-        const installedAgentNames: string[] = [];
+        const installedAgentNames: string[] = [...(writtenPaths[agentId].agents || [])];
         for (const agent of manifest.agents) {
           const content = extractAgentContent(agent, rawFiles, localDir);
           let agentObj: UniversalAgent;
@@ -427,7 +628,9 @@ export function installPackIntoAgents(
           try {
             const { writtenPath } = installAgentFiles(primaryAgentsDir, agentObj, agentId);
             const installedName = path.basename(writtenPath, path.extname(writtenPath));
-            installedAgentNames.push(installedName);
+            if (!installedAgentNames.includes(installedName)) {
+              installedAgentNames.push(installedName);
+            }
             if (!installedAgents.includes(installedName)) {
               installedAgents.push(installedName);
             }
@@ -443,7 +646,56 @@ export function installPackIntoAgents(
         }
       }
     }
+
+    // Install Rules
+    if (profile.rules?.paths?.length && manifest.rules?.length) {
+      const installedAgentRules: string[] = [];
+
+      for (const rule of manifest.rules) {
+        const content = extractRuleContent(rule, rawFiles, localDir);
+        if (!content) continue;
+        const targetDest = resolveRuleInstallTarget(rule.name, profile.rules.paths, scope);
+        if (!targetDest) continue;
+
+        try {
+          const writtenRulePath = installRuleFile(targetDest, rule.name, content);
+          installedAgentRules.push(rule.name);
+          if (!installedRules.includes(rule.name)) installedRules.push(rule.name);
+          if (!writtenPaths[agentId].rulesDir) {
+            writtenPaths[agentId].rulesDir = path.dirname(writtenRulePath);
+          }
+        } catch {
+          // Ignore invalid rule entry
+        }
+      }
+      if (installedAgentRules.length > 0) {
+        writtenPaths[agentId].rules = installedAgentRules;
+      }
+    }
+
+    // Install Lifecycle Hooks
+    if (profile.hooks?.paths?.length && manifest.hooks && Object.keys(manifest.hooks).length > 0) {
+      const hooksPath = resolveActiveAgentPath(profile.hooks.paths, { scope });
+      if (hooksPath) {
+        const mergedHooks = mergeHooksIntoFile(hooksPath, manifest.hooks, profile.hooks.key);
+        if (mergedHooks.length > 0) {
+          writtenPaths[agentId].hooksConfig = hooksPath;
+          writtenPaths[agentId].hooks = mergedHooks;
+          for (const hName of mergedHooks) {
+            if (!installedHooks.includes(hName)) installedHooks.push(hName);
+          }
+        }
+      }
+    }
   }
 
-  return { installedMcp, installedSkills, installedPlugins, installedAgents, writtenPaths };
+  return {
+    installedMcp,
+    installedSkills,
+    installedPlugins,
+    installedAgents,
+    installedRules,
+    installedHooks,
+    writtenPaths
+  };
 }

@@ -8,6 +8,7 @@ import {
   isStrictlyInside,
   type PluginEntry,
   type PluginObjectEntry,
+  type RuleEntry,
   type ScannedAgentEntry,
   type SkillEntry
 } from "@tanphat/smcp-core";
@@ -176,4 +177,26 @@ export function bundleAgentFilesForShare(agents: ScannedAgentEntry[]): {
   }
 
   return { bundledAgents, gistFiles };
+}
+
+export function bundleRuleFilesForShare(rules: RuleEntry[]): {
+  bundledRules: RuleEntry[];
+  gistFiles: Record<string, { content: string }>;
+} {
+  const bundledRules: RuleEntry[] = [];
+  const gistFiles: Record<string, { content: string }> = {};
+
+  for (const r of rules) {
+    if (typeof r.content === "string") {
+      gistFiles[`rules_${r.name}.md`] = { content: r.content };
+    }
+    bundledRules.push({
+      name: r.name,
+      path: path.posix.join("rules", `${r.name}.md`),
+      contentHash: r.contentHash,
+      content: r.content
+    });
+  }
+
+  return { bundledRules, gistFiles };
 }

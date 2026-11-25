@@ -212,6 +212,18 @@ export class RepoShareProvider implements ShareProvider {
         }
       }
 
+      if (manifest.rules && manifest.rules.length > 0) {
+        for (const rule of manifest.rules) {
+          if (typeof rule.content === "string") {
+            repoFiles[`rules/${rule.name}.md`] = rule.content;
+          }
+        }
+      }
+
+      if (manifest.hooks && Object.keys(manifest.hooks).length > 0) {
+        repoFiles["hooks/hooks.json"] = JSON.stringify(manifest.hooks, null, 2) + "\n";
+      }
+
       const res = await client.commitFilesToRepo({
         owner,
         repo: repoName,

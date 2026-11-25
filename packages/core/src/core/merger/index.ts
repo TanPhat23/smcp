@@ -3,6 +3,8 @@ export * from "./adapters/index.ts";
 export * from "./mcp.ts";
 export * from "./skills.ts";
 export * from "./plugins.ts";
+export * from "./rules.ts";
+export * from "./hooks-config.ts";
 export * from "./runtime.ts";
 export * from "./uninstall.ts";
 export { isPrototypePollutionKey } from "../../utils/security.ts";

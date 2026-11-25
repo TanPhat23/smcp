@@ -2,6 +2,7 @@ import type {
   Manifest,
   McpServerConfig,
   PluginEntry,
+  RuleEntry,
   ScannedAgentEntry,
   ShareCommandOptions,
   SkillEntry
@@ -12,11 +13,15 @@ export interface ShareProviderContext {
   bundledSkills: SkillEntry[];
   bundledPlugins: PluginEntry[];
   bundledAgents?: Array<ScannedAgentEntry & { rawContent: string }>;
+  bundledRules?: RuleEntry[];
+  bundledHooks?: Record<string, unknown>;
   redactedServers: Record<string, McpServerConfig>;
   selectedServers: Record<string, McpServerConfig>;
   selectedSkills: SkillEntry[];
   selectedPlugins: PluginEntry[];
   selectedAgents?: ScannedAgentEntry[];
+  selectedRules?: RuleEntry[];
+  selectedHooks?: Record<string, unknown>;
   gistFiles: Record<string, { content: string }>;
   options?: ShareCommandOptions;
   isNonInteractive: boolean;
